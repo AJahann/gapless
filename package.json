@@ -20,11 +20,13 @@
     "lint:fix": "oxlint --config ./oxlint.config.ts --fix apps packages",
     "format": "biome format --write",
     "format:check": "biome ci",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
     "@fullstacksjs/oxlint-config": "1.3.0",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
     "oxlint": "1.93.0",
     "typescript": "^5.9.3",

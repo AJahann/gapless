@@ -62,9 +62,13 @@ export class MainThreadFeedClient implements FeedClient {
 
   // Trade tapes per symbol (RingBuffer of last 200 trades)
   private readonly tradeTapes = new Map<number, RingBuffer<Delta>>();
+  private readonly tradeArrays = new Map<number, Delta[]>();
   // Sparklines per symbol (RingBuffer of 120 points, sampled at 1Hz)
   private readonly sparklines = new Map<number, RingBuffer<number>>();
+  private readonly sparklineArrays = new Map<number, number[]>();
   private sparklineTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly EMPTY_TRADES: Delta[] = [];
+  private static readonly EMPTY_SPARKLINE: number[] = [];
 
   // Render coalescer state
   private readonly dirtySymbols = new Set<number>();
@@ -83,6 +87,8 @@ export class MainThreadFeedClient implements FeedClient {
   private readonly allQuotesListeners = new Set<() => void>();
   private readonly topMoversListeners = new Set<() => void>();
 
+  private metricsSnapshot: SyncMetrics;
+
   constructor(options: FeedClientOptions) {
     this.feedId = options.feedId;
     this.wsBaseUrl =
@@ -98,6 +104,7 @@ export class MainThreadFeedClient implements FeedClient {
     this.heartbeatMs = options.heartbeatMs ?? 1000;
 
     this.engine = this.createEngine();
+    this.metricsSnapshot = { ...this.engine.currentMetrics };
   }
 
   private createEngine(): SyncEngine {
@@ -109,13 +116,19 @@ export class MainThreadFeedClient implements FeedClient {
         const ws = new WebSocket(url);
         this.activeWs = ws;
 
-        ws.onopen = () => onOpen();
-        ws.onmessage = (event) => onMessage(event.data);
+        ws.onopen = () => {
+          onOpen();
+        };
+        ws.onmessage = (event) => {
+          onMessage(event.data);
+        };
         ws.onclose = (event) => {
           this.activeWs = null;
           onClose(event.code);
         };
-        ws.onerror = (err) => onError(err);
+        ws.onerror = (err) => {
+          onError(err);
+        };
 
         return {
           send: (data: string) => {
@@ -144,7 +157,8 @@ export class MainThreadFeedClient implements FeedClient {
           for (const l of this.stateListeners) l(state);
         },
         onMetrics: (metrics) => {
-          for (const l of this.metricsListeners) l(metrics);
+          this.metricsSnapshot = { ...metrics };
+          for (const l of this.metricsListeners) l(this.metricsSnapshot);
         },
         onDeltaApplied: (delta) => {
           this.onDeltaApplied(delta);
@@ -200,13 +214,11 @@ export class MainThreadFeedClient implements FeedClient {
   }
 
   getMetrics(): SyncMetrics {
-    return this.engine.currentMetrics;
+    return this.metricsSnapshot;
   }
 
   getSymbols(): SymbolInfo[] {
-    return this.symbols.length > 0
-      ? this.symbols
-      : [...this.engine.currentSymbols];
+    return this.symbols;
   }
 
   getQuote(index: number): Quote | undefined {
@@ -214,13 +226,13 @@ export class MainThreadFeedClient implements FeedClient {
   }
 
   getTrades(index: number): Delta[] {
-    const ring = this.tradeTapes.get(index);
-    return ring ? ring.toArray() : [];
+    return this.tradeArrays.get(index) ?? MainThreadFeedClient.EMPTY_TRADES;
   }
 
   getSparkline(index: number): number[] {
-    const ring = this.sparklines.get(index);
-    return ring ? ring.toArray() : [];
+    return (
+      this.sparklineArrays.get(index) ?? MainThreadFeedClient.EMPTY_SPARKLINE
+    );
   }
 
   getTopGainers(): {
@@ -276,6 +288,7 @@ export class MainThreadFeedClient implements FeedClient {
       this.tradeTapes.set(symIdx, tape);
     }
     tape.push(delta);
+    this.tradeArrays.set(symIdx, tape.toArray());
 
     // Schedule rAF coalescing for dirty symbols
     this.dirtySymbols.add(symIdx);
@@ -319,6 +332,11 @@ export class MainThreadFeedClient implements FeedClient {
       l();
     }
 
+    this.metricsSnapshot = { ...this.engine.currentMetrics };
+    for (const l of this.metricsListeners) {
+      l(this.metricsSnapshot);
+    }
+
     this.dirtySymbols.clear();
   }
 
@@ -349,6 +367,7 @@ export class MainThreadFeedClient implements FeedClient {
           this.sparklines.set(i, ring);
         }
         ring.push(q.price / 1000000); // USD float for sparklines
+        this.sparklineArrays.set(i, ring.toArray());
       }
     }, 1000);
   }

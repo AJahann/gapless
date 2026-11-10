@@ -64,6 +64,7 @@ export function MetricsPanel({ client }: MetricsPanelProps) {
               {item.label}
             </div>
             <div
+              data-testid={`metric-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
               style={{
                 fontWeight: 700,
                 fontSize: '0.95rem',
