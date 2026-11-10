@@ -20,6 +20,7 @@ export default defineConfig({
       nodeProject('protocol', './packages/protocol'),
       nodeProject('engine', './packages/engine'),
       nodeProject('server', './apps/server'),
+      nodeProject('web', './apps/web'),
     ],
   },
 });
