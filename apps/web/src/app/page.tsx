@@ -7,11 +7,13 @@ import { MetricsPanel } from '../components/metrics-panel/metrics-panel';
 import { StatusBar } from '../components/status-bar/status-bar';
 import { TopMovers } from '../components/top-movers/top-movers';
 import { TradeTape } from '../components/trade-tape/trade-tape';
-import { MainThreadFeedClient } from '../feed/feed-client';
+import { type FeedClient, MainThreadFeedClient } from '../feed/feed-client';
+import { WorkerFeedClient } from '../feed/worker-feed-client';
 
 function DashboardContent() {
   const [universe, setUniverse] = useState('top100');
   const [rate, setRate] = useState(100);
+  const [mode, setMode] = useState<'main' | 'worker'>('main');
   const [selectedSymbolIndex, setSelectedSymbolIndex] = useState(0);
 
   useEffect(() => {
@@ -19,16 +21,21 @@ function DashboardContent() {
       const params = new URLSearchParams(window.location.search);
       const u = params.get('universe');
       const r = params.get('rate');
+      const m = params.get('mode');
       if (u) setUniverse(u);
       if (r) setRate(Number(r) || 100);
+      if (m === 'worker' || m === 'main') setMode(m);
     }
   }, []);
 
   const feedId = `${universe}@${rate}`;
 
-  const client = useMemo(() => {
+  const client: FeedClient = useMemo(() => {
+    if (mode === 'worker') {
+      return new WorkerFeedClient({ feedId });
+    }
     return new MainThreadFeedClient({ feedId });
-  }, [feedId]);
+  }, [feedId, mode]);
 
   useEffect(() => {
     client.start();

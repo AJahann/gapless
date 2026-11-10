@@ -1,0 +1,73 @@
+{
+  "commit": "59612ac",
+  "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+  "browserVersion": "158.0.8127.18",
+  "results": [
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 100,
+      "universe": "top100",
+      "mode": "main",
+      "p95Latency": "18 ms",
+      "longTasks": "5 (max 93ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "1.3:1"
+    },
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 100,
+      "universe": "top100",
+      "mode": "worker",
+      "p95Latency": "12 ms",
+      "longTasks": "2 (max 66ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "1.1:1"
+    },
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 1000,
+      "universe": "top100",
+      "mode": "main",
+      "p95Latency": "18 ms",
+      "longTasks": "2 (max 62ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "11.1:1"
+    },
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 1000,
+      "universe": "top100",
+      "mode": "worker",
+      "p95Latency": "12 ms",
+      "longTasks": "2 (max 64ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "11.1:1"
+    },
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 5000,
+      "universe": "top100",
+      "mode": "main",
+      "p95Latency": "18 ms",
+      "longTasks": "8 (max 76ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "55.7:1"
+    },
+    {
+      "commit": "59612ac",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 5000,
+      "universe": "top100",
+      "mode": "worker",
+      "p95Latency": "12 ms",
+      "longTasks": "6 (max 66ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "56.3:1"
+    }
+  ]
+}
