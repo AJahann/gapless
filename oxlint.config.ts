@@ -16,7 +16,7 @@ export default defineConfig({
       },
     },
     {
-      files: ['**/*.bench.ts'],
+      files: ['**/*.bench.ts', '**/*.test.ts'],
       rules: {
         'vitest/no-conditional-in-test': 'off',
         'vitest/consistent-test-it': 'off',
