@@ -1,0 +1,26 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0e14;
+  --fg: #e6e9ef;
+  --muted: #8a93a6;
+  --up: #16c784;
+  --down: #ea3943;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
