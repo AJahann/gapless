@@ -1,0 +1,40 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      - PORT=4000
+      - HOST=0.0.0.0
+      - CLIENT_ORIGIN=http://localhost,http://localhost:80,http://127.0.0.1
+      - REPLAY_WINDOW_SEC=30
+      - REPLAY_MAX_ENTRIES=100000
+      - CHAOS_ENABLED=true
+      - TEST_CONTROL=false
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+      - web
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
