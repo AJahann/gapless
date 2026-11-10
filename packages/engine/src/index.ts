@@ -8,6 +8,9 @@
 export * from './backoff';
 export * from './prng';
 export * from './ring-buffer';
+export * from './sync/clock';
+export * from './sync/sync-engine';
+export * from './sync/types';
 export * from './top-k';
 export * from './universe';
 export { PROTOCOL_VERSION } from '@gapless/protocol';
