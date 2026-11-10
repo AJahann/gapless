@@ -15,5 +15,13 @@ export default defineConfig({
         'node/no-process-env': 'off',
       },
     },
+    {
+      files: ['**/*.bench.ts'],
+      rules: {
+        'vitest/no-conditional-in-test': 'off',
+        'vitest/consistent-test-it': 'off',
+        'eslint/max-nested-callbacks': 'off',
+      },
+    },
   ],
 });
