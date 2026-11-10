@@ -1,52 +1,121 @@
 # gapless
 
-Simulated real-time market dashboard. Top-100 tokens, live price ticks, and a
+Simulated real-time market dashboard. Top-100 tokens, live price ticks, and
 **Cut connection** button. The point is not the prices — it is what happens when
 the stream is unreliable: sequence gaps, duplicates, replay, snapshot recovery,
 and a UI that stays responsive at 100–10,000 updates/sec.
 
-- **Server:** Fastify + `@fastify/websocket`. Deterministic simulated feed, per-feed
-  global sequence numbers, bounded replay buffer, atomic snapshot endpoint.
-- **Web:** Next.js (App Router) + React 19. Normalized state, `requestAnimationFrame`
-  coalescing, ring-buffer sparklines, top-K heap, virtualized rows, Web Worker mode.
-- **Shared:** `@gapless/protocol` (wire schemas) and `@gapless/engine`
-  (framework-free data structures and sync engine, used by both sides).
-
 All market data is simulated. No exchange connection, no real money, no API keys.
 
-## Status
+---
 
-Phase 0: scaffold + design docs. Implementation roadmap in [docs/ROADMAP.md](docs/ROADMAP.md).
+## Architecture
+
+```
+                       ┌──────────────────────────────────────────────┐
+                       │            Fastify Backend (:4000)           │
+                       │  - Zipf & GBM Simulated Feed Generator       │
+                       │  - Strictly monotonic (epoch, seq) assignment│
+                       │  - Synchronous atomic snapshot endpoint      │
+                       │  - Bounded replay RingBuffer<Delta>          │
+                       │  - Per-connection chaos stage                │
+                       └───────────────────┬──────────────────────────┘
+                                           │
+                        /ws/feeds/:id (WebSocket)   /api/feeds/:id/* (HTTP)
+                                           │
+                       ┌───────────────────▼──────────────────────────┐
+                       │            Caddy Reverse Proxy (:80)         │
+                       │  /api/*, /ws/* → server:4000                 │
+                       │  /*            → web:3000                    │
+                       └───────────────────┬──────────────────────────┘
+                                           │
+                       ┌───────────────────▼──────────────────────────┐
+                       │             Next.js 16 Web Client            │
+                       │  - Zero-dependency SyncEngine state machine   │
+                       │  - Main-thread / Web Worker modes            │
+                       │  - requestAnimationFrame coalesced renderer  │
+                       │  - Top-5 movers min-heap (O(n log k))        │
+                       │  - Canvas sparklines (1 Hz ring buffer)      │
+                       │  - Raw trade tape (bounded ring of 200)      │
+                       └──────────────────────────────────────────────┘
+```
+
+---
+
+## Live Demo Walkthrough
+
+1. **Clean Stream**: Load the dashboard. 100 assets stream live ticks, with connection status `LIVE` and monotonically increasing sequence numbers.
+2. **Short Outage Replay**: Click **Cut 2s (replay)**. The connection is severed, UI marks state as `OFFLINE` with a `STALE` badge. Upon reconnection, the client detects the gap and sends an in-band resume. The server replays the missed window: `Replayed` counter increments, and `Snapshots` remains 0.
+3. **Long Outage Snapshot**: Click **Cut 45s (snapshot)**. Outage exceeds the server's replay buffer window. Upon reconnection, server responds with `replay_unavailable: expired`. Client seamlessly fetches a synchronous atomic snapshot over HTTP, catches up any interleaved buffered live deltas, and converges to `LIVE` (`Snapshots` increments by 1).
+4. **Chaos Injection**: Adjust **Drop**, **Duplicate**, **Reorder**, or **Jitter** sliders in the Chaos Panel. The client sync engine transparently de-duplicates, sorts out-of-order packets via its bounded reorder window, and requests in-band resumes when needed.
+5. **Main vs Worker Mode**: Switch between main-thread rendering (`?mode=main`) and Web Worker background synchronization (`?mode=worker`) to offload transport parsing and state machine updates.
+
+---
 
 ## Quickstart
+
+### Local development
 
 ```sh
 corepack enable
 pnpm install
 cp .env.example .env
-pnpm dev          # server :4000, web :3000
+
+# Run both backend server (:4000) and Next.js web (:3000)
+pnpm dev
+
+# Verification checks (Biome format + Oxlint + Typecheck + Unit tests)
+pnpm check
+
+# Production build
+pnpm build
+
+# Real-browser Playwright E2E recovery test suite
+pnpm test:e2e
+
+# Run performance benchmarks
+node scripts/bench.mjs --quick
 ```
+
+### Docker deployment
 
 ```sh
-pnpm check        # format + lint + typecheck + unit tests
-pnpm build
-pnpm test:e2e     # Phase 5
+# Start server (:4000), web (:3000), and Caddy reverse proxy (:80)
+docker compose up --build -d
 ```
 
-## Docs
+Visit `http://localhost`.
 
-| Doc                                                                    | Contents                                                                  |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [docs/day-25-realtime-dashboard.md](docs/day-25-realtime-dashboard.md) | System design: requirements, architecture, Big-O, recovery, failure modes |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                                     | Phase-by-phase implementation plan with acceptance gates                  |
-| [docs/protocol.md](docs/protocol.md)                                   | Wire protocol: message shapes, seq/epoch rules, resume semantics          |
-| [docs/sync-algorithm.md](docs/sync-algorithm.md)                       | Client sync engine state machine and edge cases                           |
-| [docs/data-structures.md](docs/data-structures.md)                     | Chosen structures, complexity, measurement targets                        |
-| [docs/testing.md](docs/testing.md)                                     | Test matrix and the convergence invariant                                 |
-| [docs/performance.md](docs/performance.md)                             | Benchmark protocol and results (filled in Phase 6)                        |
-| [docs/pitfalls.md](docs/pitfalls.md)                                   | Platform gotchas for this monorepo                                        |
-| [docs/decisions/](docs/decisions/)                                     | ADRs                                                                      |
-| [AGENTS.md](AGENTS.md)                                                 | Conventions and commands for implementers                                 |
+---
+
+## Measured Performance
+
+Benchmarks measured via headless Chromium runner (`scripts/bench.mjs`) on an Intel Core i7-13620H host:
+
+| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint | Long tasks   | Heap Δ | Coalescing |
+| --------- | ------------------------------------------------ | ------ | -------- | ------ | -------------- | ------------ | ------ | ---------- |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | 18 ms          | 5 (max 93ms) | 0.0 MB | 1.3:1      |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | 12 ms          | 2 (max 66ms) | 0.0 MB | 1.1:1      |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | 18 ms          | 2 (max 62ms) | 0.0 MB | 11.1:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | 12 ms          | 2 (max 64ms) | 0.0 MB | 11.1:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | main   | 18 ms          | 8 (max 76ms) | 0.0 MB | 55.7:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | worker | 12 ms          | 6 (max 66ms) | 0.0 MB | 56.3:1     |
+
+---
+
+## Documentation
+
+| Document                                           | Description                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [docs/protocol.md](docs/protocol.md)               | Wire protocol v1 specification, sequence identity, fixed-point math          |
+| [docs/sync-algorithm.md](docs/sync-algorithm.md)   | Client sync engine state machine, delta gate, resume and snapshot recovery   |
+| [docs/data-structures.md](docs/data-structures.md) | Algorithmic choices, Big-O complexities, RingBuffer and TopK heap benchmarks |
+| [docs/testing.md](docs/testing.md)                 | Testing matrix and the convergence invariant property test                   |
+| [docs/performance.md](docs/performance.md)         | Detailed benchmark protocols and performance measurement tables              |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                 | Implementation roadmap and acceptance criteria across phases 0–7             |
+| [docs/decisions/](docs/decisions/)                 | Architectural Decision Records (ADRs 0001–0004)                              |
+
+---
 
 ## License
 

@@ -4,16 +4,16 @@ One branch per phase: `phase-N/<slug>` → PR into `main`. Do not start phase N+
 with phase N gates red. Every phase ends with `pnpm check` green plus its own
 acceptance items. Conventions and commands: `AGENTS.md`.
 
-| Phase | Deliverable                      | Key gates                                              |
-| ----- | -------------------------------- | ------------------------------------------------------ |
-| 0     | Scaffold + docs (this commit)    | install, lint, tsc, vitest, next build, tsup green     |
-| 1     | Protocol + shared structures     | schema round-trips; ring/heap/backoff unit + bench     |
-| 2     | Server feed, snapshot, WS, chaos | integration tests over real sockets; replay boundaries |
-| 3     | Client sync engine               | scripted + property tests incl. convergence invariant  |
-| 4     | Web UI                           | live table, kill switch, metrics; component tests      |
-| 5     | E2E + CI                         | Playwright recovery scenarios green in CI              |
-| 6     | Worker mode + benchmarks         | measured before/after in docs/performance.md           |
-| 7     | Polish + deploy                  | README demo, Docker, hosted URL                        |
+| Phase | Deliverable                      | Key gates                                              | Status |
+| ----- | -------------------------------- | ------------------------------------------------------ | ------ |
+| 0     | Scaffold + docs                  | install, lint, tsc, vitest, next build, tsup green     | Done   |
+| 1     | Protocol + shared structures     | schema round-trips; ring/heap/backoff unit + bench     | Done   |
+| 2     | Server feed, snapshot, WS, chaos | integration tests over real sockets; replay boundaries | Done   |
+| 3     | Client sync engine               | scripted + property tests incl. convergence invariant  | Done   |
+| 4     | Web UI                           | live table, kill switch, metrics; component tests      | Done   |
+| 5     | E2E + CI                         | Playwright recovery scenarios green in CI              | Done   |
+| 6     | Worker mode + benchmarks         | measured before/after in docs/performance.md           | Done   |
+| 7     | Polish + deploy                  | README demo, Docker, compose, Caddy reverse proxy      | Done   |
 
 ---
 
