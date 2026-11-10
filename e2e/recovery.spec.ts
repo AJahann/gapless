@@ -144,4 +144,23 @@ test.describe('E2E Real-time recovery scenarios', () => {
       timeout: 15000,
     });
   });
+
+  test('Scenario 5: Worker mode (?mode=worker) connects live with flowing deltas and coalesced updates', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100&mode=worker');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const rows = page.locator('table tbody tr');
+    await expect(rows).toHaveCount(100);
+
+    const deltasInCell = page.getByTestId('metric-deltas-in');
+    await expect(async () => {
+      const text = await deltasInCell.innerText();
+      const num = Number.parseInt(text.replace(/,/g, ''), 10);
+      expect(num).toBeGreaterThan(10);
+    }).toPass({ timeout: 10000 });
+  });
 });

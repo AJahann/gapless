@@ -28,5 +28,11 @@ without those is not a result.
 
 _Pending Phase 6. No estimated numbers._
 
-| Commit | Hardware | Rate | Universe | Mode | p95 recv→paint | Long tasks | Heap Δ | Coalescing |
-| ------ | -------- | ---- | -------- | ---- | -------------- | ---------- | ------ | ---------- |
+| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint | Long tasks   | Heap Δ | Coalescing |
+| --------- | ------------------------------------------------ | ------ | -------- | ------ | -------------- | ------------ | ------ | ---------- |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | 18 ms          | 5 (max 93ms) | 0.0 MB | 1.3:1      |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | 12 ms          | 2 (max 66ms) | 0.0 MB | 1.1:1      |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | 18 ms          | 2 (max 62ms) | 0.0 MB | 11.1:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | 12 ms          | 2 (max 64ms) | 0.0 MB | 11.1:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | main   | 18 ms          | 8 (max 76ms) | 0.0 MB | 55.7:1     |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | worker | 12 ms          | 6 (max 66ms) | 0.0 MB | 56.3:1     |
