@@ -31,3 +31,28 @@ jobs:
 
   # Phase 5 adds an e2e job: TEST_CONTROL=true, short REPLAY_WINDOW_SEC,
   # fixed seed, playwright install --with-deps chromium, trace on failure.
+  e2e:
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+      - run: pnpm test:e2e
+        env:
+          PORT: "4000"
+          HOST: "127.0.0.1"
+          TEST_CONTROL: "true"
+          REPLAY_WINDOW_SEC: "2"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

@@ -114,13 +114,11 @@ export class SyncEngine {
   }
 
   get currentMetrics(): SyncMetrics {
-    return {
-      ...this.metrics,
-      state: this.state,
-      epoch: this.epoch,
-      lastSeq: this.lastSeq,
-      pendingSize: this.pending.size,
-    };
+    this.metrics.state = this.state;
+    this.metrics.epoch = this.epoch;
+    this.metrics.lastSeq = this.lastSeq;
+    this.metrics.pendingSize = this.pending.size;
+    return this.metrics;
   }
 
   start(): void {

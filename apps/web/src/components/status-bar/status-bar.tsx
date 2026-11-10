@@ -77,7 +77,10 @@ export function StatusBar({ client, feedId }: StatusBarProps) {
             boxShadow: `0 0 8px ${stateColors[state] ?? '#6b7280'}`,
           }}
         />
-        <span style={{ fontWeight: 600, letterSpacing: '0.05em' }}>
+        <span
+          data-testid='status-pill'
+          style={{ fontWeight: 600, letterSpacing: '0.05em' }}
+        >
           {state.toUpperCase()}
         </span>
         <span
