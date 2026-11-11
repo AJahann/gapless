@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { ChaosPanel } from '../components/chaos-panel/chaos-panel';
+import { ConceptsGuide } from '../components/concepts-guide/concepts-guide';
 import { MarketTable } from '../components/market-table/market-table';
 import { MetricsPanel } from '../components/metrics-panel/metrics-panel';
 import { StatusBar } from '../components/status-bar/status-bar';
@@ -9,12 +10,15 @@ import { TopMovers } from '../components/top-movers/top-movers';
 import { TradeTape } from '../components/trade-tape/trade-tape';
 import { type FeedClient, MainThreadFeedClient } from '../feed/feed-client';
 import { WorkerFeedClient } from '../feed/worker-feed-client';
+import { useFps } from '../hooks/use-fps';
 
 function DashboardContent() {
   const [universe, setUniverse] = useState('top100');
   const [rate, setRate] = useState(100);
   const [mode, setMode] = useState<'main' | 'worker'>('main');
   const [selectedSymbolIndex, setSelectedSymbolIndex] = useState(0);
+
+  const fps = useFps();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -27,6 +31,15 @@ function DashboardContent() {
       if (m === 'worker' || m === 'main') setMode(m);
     }
   }, []);
+
+  const handleRateChange = (newRate: number) => {
+    setRate(newRate);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('rate', String(newRate));
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
 
   const feedId = `${universe}@${rate}`;
 
@@ -52,78 +65,60 @@ function DashboardContent() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          borderBottom: '1px solid #1f2638',
-          paddingBottom: '0.75rem',
-        }}
-      >
+    <div className='flex flex-col gap-5'>
+      <header className='flex flex-wrap items-baseline justify-between border-b border-brand-border-subtle pb-3'>
         <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: '1.5rem',
-              fontWeight: 800,
-              letterSpacing: '-0.02em',
-            }}
-          >
+          <h1 className='text-2xl font-black tracking-tight text-brand-fg'>
             gapless
           </h1>
-          <p
-            style={{
-              margin: '0.2rem 0 0',
-              color: '#8a93a6',
-              fontSize: '0.85rem',
-            }}
-          >
+          <p className='mt-0.5 text-xs text-brand-muted'>
             Sequenced deltas, gap detection, replay and snapshot recovery under
             chaos.
           </p>
         </div>
       </header>
 
-      <StatusBar client={client} feedId={feedId} />
+      <StatusBar
+        client={client}
+        feedId={feedId}
+        currentRate={rate}
+        onRateChange={handleRateChange}
+        fps={fps}
+      />
       <TopMovers client={client} onSelectSymbol={setSelectedSymbolIndex} />
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)',
-          gap: '1.25rem',
-          alignItems: 'start',
-        }}
-      >
-        <MarketTable
-          client={client}
-          selectedSymbolIndex={selectedSymbolIndex}
-          onSelectSymbol={setSelectedSymbolIndex}
-        />
+      <div className='grid grid-cols-1 items-start gap-5 lg:grid-cols-3'>
+        <div className='lg:col-span-2'>
+          <MarketTable
+            client={client}
+            selectedSymbolIndex={selectedSymbolIndex}
+            onSelectSymbol={setSelectedSymbolIndex}
+          />
+        </div>
 
-        <div
-          style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
-        >
+        <div className='flex flex-col gap-5'>
           <TradeTape
             client={client}
             symbolIndex={selectedSymbolIndex}
             symbolName={selectedSymbol.symbol}
           />
-          <MetricsPanel client={client} />
+          <MetricsPanel client={client} fps={fps} />
           <ChaosPanel client={client} />
         </div>
       </div>
+
+      <ConceptsGuide />
     </div>
   );
 }
 
 export default function HomePage() {
   return (
-    <main className='shell'>
+    <main className='mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8'>
       <Suspense
-        fallback={<div style={{ padding: '2rem' }}>Loading market...</div>}
+        fallback={
+          <div className='p-8 text-sm text-brand-muted'>Loading market...</div>
+        }
       >
         <DashboardContent />
       </Suspense>

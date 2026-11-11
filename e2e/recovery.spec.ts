@@ -163,4 +163,37 @@ test.describe('E2E Real-time recovery scenarios', () => {
       expect(num).toBeGreaterThan(10);
     }).toPass({ timeout: 10000 });
   });
+
+  test('Scenario 6: Rate switching, FPS indicators, and Concepts Guide accordion', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    // Verify FPS counter in status bar
+    const fpsBadge = page.getByTestId('status-fps');
+    await expect(fpsBadge).toContainText('FPS');
+
+    // Switch rate to 500/s via pill button
+    const rate500Btn = page.getByRole('button', { name: '500/s' });
+    await rate500Btn.click();
+    await expect(page.locator('text=top100@500')).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    // Concepts Guide accordion toggle
+    const seqCardBtn = page.getByRole('button', {
+      name: 'Sequence Number (seq)',
+    });
+    await expect(seqCardBtn).toBeVisible();
+    await seqCardBtn.click();
+    await expect(
+      page.locator('text=Gate rule: delta valid if seq === lastSeq + 1.'),
+    ).toBeVisible();
+  });
 });

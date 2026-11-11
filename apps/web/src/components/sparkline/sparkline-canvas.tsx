@@ -68,10 +68,10 @@ export function SparklineCanvas({
   return (
     <canvas
       ref={canvasRef}
+      className='block'
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        display: 'block',
       }}
     />
   );

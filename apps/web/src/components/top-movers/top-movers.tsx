@@ -16,26 +16,11 @@ export function TopMovers({ client, onSelectSymbol }: TopMoversProps) {
   }
 
   return (
-    <div style={{ marginTop: '1.25rem' }}>
-      <div
-        style={{
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          color: '#8a93a6',
-          textTransform: 'uppercase',
-          marginBottom: '0.5rem',
-          letterSpacing: '0.05em',
-        }}
-      >
+    <div className='mt-4'>
+      <div className='mb-2 text-xs font-semibold uppercase tracking-wider text-brand-muted'>
         Top Movers (500ms Heap)
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '0.75rem',
-        }}
-      >
+      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5'>
         {movers.map((m) => {
           const isUp = m.changePct >= 0;
           const priceFormatted = (m.quote.price / 1000000).toLocaleString(
@@ -51,39 +36,22 @@ export function TopMovers({ client, onSelectSymbol }: TopMoversProps) {
               type='button'
               key={m.symbol.symbol}
               onClick={() => onSelectSymbol?.(m.symbol.index)}
-              style={{
-                background: '#161b26',
-                border: '1px solid #2a3142',
-                borderRadius: '6px',
-                padding: '0.75rem 1rem',
-                cursor: 'pointer',
-                textAlign: 'left',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.25rem',
-                color: 'inherit',
-              }}
+              className='flex cursor-pointer flex-col gap-1 rounded-md border border-brand-border bg-brand-card p-3 text-left transition hover:border-brand-border-subtle hover:bg-brand-card-hover'
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <span style={{ fontWeight: 700 }}>{m.symbol.symbol}</span>
+              <div className='flex items-center justify-between'>
+                <span className='text-sm font-bold text-brand-fg'>
+                  {m.symbol.symbol}
+                </span>
                 <span
-                  style={{
-                    color: isUp ? '#16c784' : '#ea3943',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                  }}
+                  className={`text-xs font-bold tabular-nums ${
+                    isUp ? 'text-brand-up' : 'text-brand-down'
+                  }`}
                 >
                   {isUp ? '+' : ''}
                   {m.changePct.toFixed(2)}%
                 </span>
               </div>
-              <div style={{ fontSize: '0.9rem', color: '#8a93a6' }}>
+              <div className='text-xs text-brand-muted tabular-nums'>
                 ${priceFormatted}
               </div>
             </button>

@@ -15,53 +15,19 @@ export function TradeTape({ client, symbolIndex, symbolName }: TradeTapeProps) {
   const reversedTrades = [...trades].reverse();
 
   return (
-    <div
-      style={{
-        background: '#161b26',
-        border: '1px solid #2a3142',
-        borderRadius: '8px',
-        padding: '1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight: '340px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <span
-          style={{
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            color: '#8a93a6',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
+    <div className='flex max-h-[340px] flex-col rounded-lg border border-brand-border bg-brand-card p-4'>
+      <div className='mb-3 flex items-center justify-between'>
+        <span className='text-xs font-bold uppercase tracking-wider text-brand-muted'>
           Trade Tape ({symbolName})
         </span>
-        <span style={{ fontSize: '0.75rem', color: '#8a93a6' }}>
+        <span className='text-[11px] text-brand-muted'>
           {trades.length} prints (ring of 200)
         </span>
       </div>
 
-      <div
-        style={{
-          overflowY: 'auto',
-          flex: 1,
-          fontFamily: 'monospace',
-          fontSize: '0.75rem',
-        }}
-      >
+      <div className='flex-1 overflow-y-auto font-mono text-xs'>
         {reversedTrades.length === 0 ? (
-          <div
-            style={{ color: '#8a93a6', padding: '1rem 0', textAlign: 'center' }}
-          >
+          <div className='py-4 text-center text-xs text-brand-muted'>
             Awaiting trade prints...
           </div>
         ) : (
@@ -75,24 +41,18 @@ export function TradeTape({ client, symbolIndex, symbolName }: TradeTapeProps) {
             return (
               <div
                 key={seq}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '0.2rem 0',
-                  borderBottom: '1px solid #1f2638',
-                }}
+                className='flex items-center justify-between border-b border-brand-border-subtle py-1 text-[11px]'
               >
-                <span style={{ color: '#8a93a6' }}>#{seq}</span>
+                <span className='text-brand-muted'>#{seq}</span>
                 <span
-                  style={{
-                    color: isBuy ? '#16c784' : '#ea3943',
-                    fontWeight: 600,
-                  }}
+                  className={`font-semibold tabular-nums ${
+                    isBuy ? 'text-brand-up' : 'text-brand-down'
+                  }`}
                 >
                   ${priceUsd}
                 </span>
-                <span>{sizeTokens}</span>
-                <span style={{ color: '#8a93a6' }}>{timeStr}</span>
+                <span className='tabular-nums text-brand-fg'>{sizeTokens}</span>
+                <span className='text-[10px] text-brand-muted'>{timeStr}</span>
               </div>
             );
           })
