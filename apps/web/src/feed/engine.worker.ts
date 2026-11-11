@@ -156,7 +156,9 @@ function initEngine(msg: Extract<MainToWorkerMessage, { type: 'init' }>): void {
       ws.onopen = () => onOpen();
       ws.onmessage = (event) => onMessage(event.data);
       ws.onclose = (event) => {
-        activeWs = null;
+        if (activeWs === ws) {
+          activeWs = null;
+        }
         onClose(event.code);
       };
       ws.onerror = (err) => onError(err);
@@ -219,41 +221,58 @@ function initEngine(msg: Extract<MainToWorkerMessage, { type: 'init' }>): void {
     },
   });
 
-  // Top movers timer (500ms)
-  topMoversTimer = setInterval(() => {
-    recomputeTopMovers();
-    scheduleFlush();
-  }, 500);
+  // Timers are managed by startEngine/stopEngine for restartability
+}
 
-  // Sparklines sampler (1Hz)
-  sparklineTimer = setInterval(() => {
-    if (!engine) return;
-    const quotes = engine.currentQuotes;
-    for (let i = 0; i < quotes.length; i += 1) {
-      const q = quotes[i];
-      if (!q) continue;
+function startEngine(): void {
+  engine?.start();
 
-      let ring = sparklines.get(i);
-      if (!ring) {
-        ring = new RingBuffer<number>(120);
-        sparklines.set(i, ring);
+  if (!topMoversTimer) {
+    topMoversTimer = setInterval(() => {
+      recomputeTopMovers();
+      scheduleFlush();
+    }, 500);
+  }
+
+  if (!sparklineTimer) {
+    sparklineTimer = setInterval(() => {
+      if (!engine) return;
+      const quotes = engine.currentQuotes;
+      for (let i = 0; i < quotes.length; i += 1) {
+        const q = quotes[i];
+        if (!q) continue;
+
+        let ring = sparklines.get(i);
+        if (!ring) {
+          ring = new RingBuffer<number>(120);
+          sparklines.set(i, ring);
+        }
+        ring.push(q.price / 1000000);
+        dirtySparklines.add(i);
       }
-      ring.push(q.price / 1000000);
-      dirtySparklines.add(i);
-    }
-    scheduleFlush();
-  }, 1000);
+      scheduleFlush();
+    }, 1000);
+  }
 }
 
 function stopEngine(): void {
   engine?.stop();
-  if (sparklineTimer) clearInterval(sparklineTimer);
-  if (topMoversTimer) clearInterval(topMoversTimer);
-  if (flushTimer) clearTimeout(flushTimer);
+  if (sparklineTimer) {
+    clearInterval(sparklineTimer);
+    sparklineTimer = null;
+  }
+  if (topMoversTimer) {
+    clearInterval(topMoversTimer);
+    topMoversTimer = null;
+  }
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
 }
 
 const COMMAND_MAP: Record<string, () => void> = {
-  start: () => engine?.start(),
+  start: () => startEngine(),
   stop: () => stopEngine(),
   cut: () => engine?.cut(),
   restore: () => engine?.restore(),

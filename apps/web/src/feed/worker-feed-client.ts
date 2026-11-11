@@ -68,10 +68,6 @@ export class WorkerFeedClient implements FeedClient {
           : window.location.origin
         : 'http://127.0.0.1:4000');
     this.heartbeatMs = options.heartbeatMs;
-
-    if (typeof window !== 'undefined') {
-      this.initWorker();
-    }
   }
 
   private initWorker(): void {
@@ -138,13 +134,19 @@ export class WorkerFeedClient implements FeedClient {
   }
 
   start(): void {
+    if (typeof window === 'undefined') return;
+    if (!this.worker) {
+      this.initWorker();
+    }
     this.worker?.postMessage({ type: 'start' });
   }
 
   stop(): void {
-    this.worker?.postMessage({ type: 'stop' });
-    this.worker?.terminate();
-    this.worker = null;
+    if (this.worker) {
+      this.worker.postMessage({ type: 'stop' });
+      this.worker.terminate();
+      this.worker = null;
+    }
   }
 
   cut(): void {

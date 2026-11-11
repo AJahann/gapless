@@ -96,4 +96,24 @@ describe(MainThreadFeedClient, () => {
     // Coalesced into 1 flush!
     expect(btcNotificationCount).toBe(1);
   });
+
+  it('supports idempotent start and restartable lifecycle', () => {
+    const client = new MainThreadFeedClient({ feedId: 'top100@100' });
+    // First start
+    client.start();
+    expect(client.getState()).toBe('connecting');
+    // Repeated start is idempotent
+    client.start();
+    expect(client.getState()).toBe('connecting');
+    // Stop cleans up to idle
+    client.stop();
+    expect(client.getState()).toBe('idle');
+    // Second stop is idempotent
+    client.stop();
+    expect(client.getState()).toBe('idle');
+    // Restartable: start after stop transitions to connecting again
+    client.start();
+    expect(client.getState()).toBe('connecting');
+    client.stop();
+  });
 });

@@ -132,7 +132,9 @@ export class MainThreadFeedClient implements FeedClient {
           onMessage(event.data);
         };
         ws.onclose = (event) => {
-          this.activeWs = null;
+          if (this.activeWs === ws) {
+            this.activeWs = null;
+          }
           onClose(event.code);
         };
         ws.onerror = (err) => {

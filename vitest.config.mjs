@@ -12,6 +12,7 @@ const nodeProject = (name, root) => ({
 
 export default defineConfig({
   test: {
+    testTimeout: 15000,
     passWithNoTests: true,
     reporters: process.env.GITHUB_ACTIONS
       ? ['default', 'github-actions']

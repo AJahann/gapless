@@ -426,4 +426,306 @@ describe('SyncEngine test matrix', () => {
       resume: { epoch: 'epoch-1', seq: 10 },
     });
   });
+
+  describe('Phase R1 Remediation Specifications', () => {
+    it('F03: behind-buffer snapshot transitions to replaying and requests resume', async () => {
+      let resolveSnapshot!: (snap: Snapshot) => void;
+      const snapshotPromise = new Promise<Snapshot>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+
+      const engine = new SyncEngine({
+        feedId: 'top100@100',
+        clock,
+        connectSocket: (onOpen, onMessage, onClose) => {
+          onSocketMessageCb = onMessage;
+          onSocketCloseCb = onClose;
+          const sock = createMockSocket();
+          queueMicrotask(onOpen);
+          return sock;
+        },
+        fetchSnapshot: () => snapshotPromise,
+      });
+
+      engine.start();
+      await Promise.resolve();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 100,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'snapshot',
+      });
+      expect(engine.currentState).toBe('syncing');
+
+      // Buffer delta 102 (hole at 101)
+      const d102: Delta = [102, 0, 68000000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [d102] });
+      expect(engine.currentMetrics.pendingSize).toBe(1);
+
+      // Now resolve snapshot at 100 -> minPendingSeq (102) > 100 + 1
+      resolveSnapshot({
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        seq: 100,
+        symbols: initialUniverse.symbols,
+        quotes: initialUniverse.quotes,
+      });
+      await Promise.resolve();
+
+      // Must not deadlock in syncing: transitions to replaying and requests resume
+      expect(engine.currentState).toBe('replaying');
+      const lastMsg = getLastClientMessage();
+      expect(lastMsg).toEqual({
+        type: 'resume',
+        epoch: 'epoch-1',
+        seq: 100,
+      });
+    });
+
+    it('F03: snapshot deadline times out after 5000ms and fails over to error after retries', async () => {
+      const hungSnapshot = () => new Promise<Snapshot>(() => {});
+      const engine = new SyncEngine({
+        feedId: 'top100@100',
+        clock,
+        heartbeatMs: 20000,
+        connectSocket: (onOpen, onMessage, onClose) => {
+          onSocketMessageCb = onMessage;
+          onSocketCloseCb = onClose;
+          const sock = createMockSocket();
+          queueMicrotask(onOpen);
+          return sock;
+        },
+        fetchSnapshot: hungSnapshot,
+      });
+
+      engine.start();
+      await Promise.resolve();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 100,
+        oldestSeq: 1,
+        heartbeatMs: 20000,
+        mode: 'snapshot',
+      });
+      expect(engine.currentState).toBe('syncing');
+
+      // Advance 5001ms -> attempt 1 timeout, schedules retry in 500ms
+      clock.advanceTimeBy(5001);
+      expect(engine.currentState).toBe('syncing');
+
+      // Advance 500ms (retry triggered) + 5001ms -> attempt 2 timeout, schedules retry in 1000ms
+      clock.advanceTimeBy(500 + 5001);
+      expect(engine.currentState).toBe('syncing');
+
+      // Advance 1000ms (retry triggered) + 5001ms -> attempt 3 timeout -> reaches error state!
+      clock.advanceTimeBy(1000 + 5001);
+      expect(engine.currentState).toBe('error');
+    });
+
+    it('F04: deltas are staged during syncing; cut/restore before baseline does not send resume', async () => {
+      let resolveSnapshot!: (snap: Snapshot) => void;
+      const snapshotPromise = new Promise<Snapshot>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+
+      const engine = new SyncEngine({
+        feedId: 'top100@100',
+        clock,
+        connectSocket: (onOpen, onMessage, onClose) => {
+          onSocketMessageCb = onMessage;
+          onSocketCloseCb = onClose;
+          const sock = createMockSocket();
+          queueMicrotask(onOpen);
+          return sock;
+        },
+        fetchSnapshot: () => snapshotPromise,
+      });
+
+      engine.start();
+      await Promise.resolve();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'snapshot',
+      });
+
+      // Deltas arrive while syncing
+      const d1: Delta = [1, 0, 68000000000, 10000, 0, clock.now()];
+      const d2: Delta = [2, 0, 68100000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [d1, d2] });
+
+      // Seq must not advance without installed baseline
+      expect(engine.currentSeq).toBe(0);
+      expect(engine.currentMetrics.pendingSize).toBe(2);
+
+      // Cut connection before snapshot resolves
+      engine.cut();
+      expect(engine.currentState).toBe('offline');
+
+      // Restore connection
+      engine.restore();
+      await Promise.resolve();
+
+      // Must not send resume for seq 2 because baseline was never installed!
+      const lastMsg = getLastClientMessage();
+      expect(lastMsg).toEqual({
+        type: 'hello',
+        v: 1,
+        feed: 'top100@100',
+        resume: undefined,
+      });
+
+      // Cleanup snapshot promise
+      resolveSnapshot({
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        seq: 10,
+        symbols: initialUniverse.symbols,
+        quotes: initialUniverse.quotes,
+      });
+    });
+
+    it('F04: pending size is hard-bounded at 256 without resume storm', () => {
+      const engine = setupEngine();
+      engine.start();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'live',
+      });
+
+      sentMessages = [];
+
+      // Deliver 300 gap deltas
+      for (let s = 20; s < 320; s += 1) {
+        const d: Delta = [s, 0, 68000000000, 10000, 0, clock.now()];
+        deliver({ type: 'deltas', items: [d] });
+      }
+
+      // Hard memory bound: pendingSize is capped at 256
+      expect(engine.currentMetrics.pendingSize).toBe(256);
+
+      // No resume storm (sent at most 1 resume on overflow, not 44)
+      const resumeCount = sentMessages.filter((m) =>
+        m.includes('"resume"'),
+      ).length;
+      expect(resumeCount).toBeLessThanOrEqual(1);
+    });
+
+    it('F06: stop aborts in-flight snapshot and prevents stopped engine resurrection', async () => {
+      let resolveSnapshot!: (snap: Snapshot) => void;
+      const snapshotPromise = new Promise<Snapshot>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+
+      const engine = new SyncEngine({
+        feedId: 'top100@100',
+        clock,
+        connectSocket: (onOpen, onMessage, onClose) => {
+          onSocketMessageCb = onMessage;
+          onSocketCloseCb = onClose;
+          const sock = createMockSocket();
+          queueMicrotask(onOpen);
+          return sock;
+        },
+        fetchSnapshot: () => snapshotPromise,
+      });
+
+      engine.start();
+      await Promise.resolve();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'snapshot',
+      });
+      expect(engine.currentState).toBe('syncing');
+
+      // Stop engine while fetch in flight
+      engine.stop();
+      expect(engine.currentState).toBe('idle');
+
+      // Now late snapshot resolves
+      resolveSnapshot({
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        seq: 10,
+        symbols: initialUniverse.symbols,
+        quotes: initialUniverse.quotes,
+      });
+      await Promise.resolve();
+
+      // State must remain idle, not resurrected to live or replaying
+      expect(engine.currentState).toBe('idle');
+    });
+
+    it('F21: replay does not transition to live before reaching advertised headSeq', () => {
+      const engine = setupEngine();
+      engine.start();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'live',
+      });
+
+      // Now reconnect / receive replay welcome with headSeq 15
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 15,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'replay',
+      });
+      expect(engine.currentState).toBe('replaying');
+
+      // Deliver replay delta 11
+      const d11: Delta = [11, 0, 68000000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [d11] });
+      expect(engine.currentSeq).toBe(11);
+      expect(engine.currentMetrics.replays).toBe(1);
+      // Head is 15 -> must STILL be replaying, not live!
+      expect(engine.currentState).toBe('replaying');
+
+      // Deliver deltas 12, 13, 14
+      const d12: Delta = [12, 0, 68000000000, 10000, 0, clock.now()];
+      const d13: Delta = [13, 0, 68000000000, 10000, 0, clock.now()];
+      const d14: Delta = [14, 0, 68000000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [d12, d13, d14] });
+      expect(engine.currentState).toBe('replaying');
+
+      // Deliver final delta 15 -> headSeq reached, now live!
+      const d15: Delta = [15, 0, 68000000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [d15] });
+      expect(engine.currentState).toBe('live');
+      expect(engine.currentMetrics.replays).toBe(5);
+    });
+  });
 });

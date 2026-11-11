@@ -29,12 +29,13 @@ const GAP_TIMEOUT_MS = 100;
 const DROPPED_TAIL_TIMEOUT_MS = 250;
 const MAX_PENDING_SIZE = 256;
 const MAX_SNAPSHOT_RETRIES = 3;
+const SNAPSHOT_TIMEOUT_MS = 5000;
 
 export class SyncEngine {
   readonly feedId: string;
   private readonly clock: Clock;
   private readonly rng: () => number;
-  private readonly heartbeatMs: number;
+  private heartbeatMs: number;
   private readonly connectSocketFn: SyncEngineOptions['connectSocket'];
   private readonly fetchSnapshotFn: SyncEngineOptions['fetchSnapshot'];
   private readonly listeners: SyncEngineListeners;
@@ -46,6 +47,12 @@ export class SyncEngine {
   private quotes: Quote[] = [];
   private symbols: SymbolInfo[] = [];
   private readonly pending = new Map<number, Delta>();
+  private baselineInstalled = false;
+  private replayTargetSeq = 0;
+
+  // Generation trackers for async lifecycle ownership (F06)
+  private connectionGeneration = 0;
+  private snapshotGeneration = 0;
 
   // Timers
   private gapTimer: ClockTimer | null = null;
@@ -53,6 +60,8 @@ export class SyncEngine {
   private watchdogTimer: ClockTimer | null = null;
   private reconnectTimer: ClockTimer | null = null;
   private liveStableTimer: ClockTimer | null = null;
+  private snapshotRetryTimer: ClockTimer | null = null;
+  private snapshotDeadlineTimer: ClockTimer | null = null;
 
   // Snapshot fetch state
   private snapshotAbortController: AbortController | null = null;
@@ -90,6 +99,9 @@ export class SyncEngine {
     }
     if (options.quotes) {
       this.quotes = options.quotes.map((q) => ({ ...q }));
+      if (this.quotes.length > 0) {
+        this.baselineInstalled = true;
+      }
     }
   }
 
@@ -130,8 +142,14 @@ export class SyncEngine {
   }
 
   stop(): void {
+    this.connectionGeneration += 1;
+    this.snapshotGeneration += 1;
     this.setState('idle');
     this.clearAllTimers();
+    if (this.snapshotAbortController) {
+      this.snapshotAbortController.abort();
+      this.snapshotAbortController = null;
+    }
     if (this.socket) {
       this.socket.close();
       this.socket = null;
@@ -139,6 +157,8 @@ export class SyncEngine {
   }
 
   cut(): void {
+    this.connectionGeneration += 1;
+    this.snapshotGeneration += 1;
     this.setState('offline');
     this.clearAllTimers();
     if (this.snapshotAbortController) {
@@ -198,21 +218,39 @@ export class SyncEngine {
   }
 
   private openSocket(): void {
+    this.connectionGeneration += 1;
+    const gen = this.connectionGeneration;
     this.setState('connecting');
     this.metrics.reconnects += 1;
     this.notifyMetrics();
 
     this.socket = this.connectSocketFn(
-      () => this.onSocketOpen(),
-      (data) => this.onSocketMessage(data),
-      (code) => this.onSocketClose(code),
-      (err) => this.onSocketError(err),
+      () => {
+        if (this.connectionGeneration === gen) {
+          this.onSocketOpen(gen);
+        }
+      },
+      (data) => {
+        if (this.connectionGeneration === gen) {
+          this.onSocketMessage(data, gen);
+        }
+      },
+      (code) => {
+        if (this.connectionGeneration === gen) {
+          this.onSocketClose(code, gen);
+        }
+      },
+      (err) => {
+        if (this.connectionGeneration === gen) {
+          this.onSocketError(err);
+        }
+      },
     );
   }
 
-  private onSocketOpen(): void {
+  private onSocketOpen(_gen: number): void {
     const resume =
-      this.epoch && this.lastSeq > 0
+      this.baselineInstalled && this.epoch && this.lastSeq > 0
         ? { epoch: this.epoch, seq: this.lastSeq }
         : undefined;
 
@@ -230,7 +268,7 @@ export class SyncEngine {
     this.resetWatchdog();
   }
 
-  private onSocketMessage(rawData: string): void {
+  private onSocketMessage(rawData: string, _gen: number): void {
     const decoded = safeDecodeServerMessage(rawData);
     if (!decoded.success) return;
 
@@ -260,21 +298,30 @@ export class SyncEngine {
     epoch: string;
     mode: 'replay' | 'live' | 'snapshot';
     headSeq: number;
+    heartbeatMs?: number;
   }): void {
+    if (msg.heartbeatMs && msg.heartbeatMs > 0) {
+      this.heartbeatMs = msg.heartbeatMs;
+    }
     if (this.epoch && this.epoch !== msg.epoch) {
       // Feed changed epoch -> reset sequence position
       this.lastSeq = 0;
+      this.baselineInstalled = false;
       this.pending.clear();
     }
     this.epoch = msg.epoch;
     this.resetWatchdog();
 
     if (msg.mode === 'snapshot') {
+      this.replayTargetSeq = msg.headSeq;
       this.startSnapshotSync();
     } else if (msg.mode === 'replay') {
+      this.replayTargetSeq = msg.headSeq;
       this.setState('replaying');
     } else if (msg.mode === 'live') {
       this.lastSeq = msg.headSeq;
+      this.replayTargetSeq = msg.headSeq;
+      this.baselineInstalled = true;
       this.setState('live');
     }
   }
@@ -289,11 +336,21 @@ export class SyncEngine {
 
   private onDelta(delta: Delta): void {
     this.metrics.deltasIn += 1;
-    const [seq, symbolIndex] = delta;
+    const [seq] = delta;
 
     if (this.droppedTailTimer) {
       this.droppedTailTimer.cancel();
       this.droppedTailTimer = null;
+    }
+
+    // While syncing or before a baseline snapshot is installed:
+    // Deltas must be buffered in pending, NEVER applied to uninitialized state
+    if (this.state === 'syncing' || !this.baselineInstalled) {
+      if (this.pending.size >= MAX_PENDING_SIZE) {
+        return;
+      }
+      this.pending.set(seq, delta);
+      return;
     }
 
     if (seq <= this.lastSeq) {
@@ -309,18 +366,23 @@ export class SyncEngine {
 
     // Gap detected: seq > lastSeq + 1
     this.metrics.gaps += 1;
+
+    // Hard memory bound: cap pending map size at MAX_PENDING_SIZE
+    if (this.pending.size >= MAX_PENDING_SIZE) {
+      if (!this.gapTimer && this.state !== 'replaying') {
+        this.requestResume(true);
+      }
+      return;
+    }
+
     this.pending.set(seq, delta);
 
-    // If gapAge timer not running, start 100ms timer
+    // If gapTimer not running, start 100ms timer
     if (!this.gapTimer) {
       this.gapTimer = this.clock.setTimeout(() => {
         this.gapTimer = null;
         this.requestResume(true);
       }, GAP_TIMEOUT_MS);
-    }
-
-    if (this.pending.size > MAX_PENDING_SIZE) {
-      this.requestResume(true);
     }
   }
 
@@ -336,6 +398,9 @@ export class SyncEngine {
     this.lastSeq = delta[0];
     if (this.state === 'replaying') {
       this.metrics.replays += 1;
+      if (this.pending.size === 0 && this.lastSeq >= this.replayTargetSeq) {
+        this.setState('live');
+      }
     }
   }
 
@@ -351,7 +416,7 @@ export class SyncEngine {
         this.gapTimer.cancel();
         this.gapTimer = null;
       }
-      if (this.state === 'replaying') {
+      if (this.state === 'replaying' && this.lastSeq >= this.replayTargetSeq) {
         this.setState('live');
       }
     }
@@ -360,7 +425,7 @@ export class SyncEngine {
   private handleHeartbeat(headSeq: number): void {
     this.resetWatchdog();
 
-    if (headSeq > this.lastSeq) {
+    if (headSeq > this.lastSeq && this.state !== 'syncing') {
       // Server is ahead: if no delta closes gap within 250ms, request resume
       if (!this.droppedTailTimer) {
         this.droppedTailTimer = this.clock.setTimeout(() => {
@@ -378,6 +443,7 @@ export class SyncEngine {
     if (reason === 'stale_epoch' || reason === 'future') {
       this.lastSeq = 0;
       this.epoch = newEpoch;
+      this.baselineInstalled = false;
       this.pending.clear();
     }
     this.startSnapshotSync();
@@ -407,62 +473,157 @@ export class SyncEngine {
   }
 
   private startSnapshotSync(): void {
-    if (this.state === 'offline') return;
+    if (this.state === 'offline' || this.state === 'idle') return;
 
     this.setState('syncing');
+    if (this.gapTimer) {
+      this.gapTimer.cancel();
+      this.gapTimer = null;
+    }
+    if (this.droppedTailTimer) {
+      this.droppedTailTimer.cancel();
+      this.droppedTailTimer = null;
+    }
     if (this.snapshotAbortController) {
       this.snapshotAbortController.abort();
     }
+    if (this.snapshotDeadlineTimer) {
+      this.snapshotDeadlineTimer.cancel();
+      this.snapshotDeadlineTimer = null;
+    }
+    if (this.snapshotRetryTimer) {
+      this.snapshotRetryTimer.cancel();
+      this.snapshotRetryTimer = null;
+    }
+
+    this.snapshotGeneration += 1;
+    const sGen = this.snapshotGeneration;
     const ac = new AbortController();
     this.snapshotAbortController = ac;
 
+    // 5-second snapshot deadline (F03)
+    this.snapshotDeadlineTimer = this.clock.setTimeout(() => {
+      if (this.snapshotGeneration !== sGen) return;
+      ac.abort();
+      this.handleSnapshotFailure(
+        new Error('Snapshot fetch timed out after 5000ms'),
+      );
+    }, SNAPSHOT_TIMEOUT_MS);
+
     this.fetchSnapshotFn(this.feedId, ac.signal)
       .then((snapshot) => {
-        if (ac.signal.aborted) return;
+        if (ac.signal.aborted || this.snapshotGeneration !== sGen) return;
+        if (this.snapshotDeadlineTimer) {
+          this.snapshotDeadlineTimer.cancel();
+          this.snapshotDeadlineTimer = null;
+        }
         this.onSnapshotFetched(snapshot);
       })
       .catch((err: unknown) => {
-        if (ac.signal.aborted) return;
-        this.snapshotAttempts += 1;
-        if (this.snapshotAttempts >= MAX_SNAPSHOT_RETRIES) {
-          this.setState('error');
-          this.listeners.onError?.(
-            err instanceof Error ? err : new Error(String(err)),
-          );
-        } else {
-          this.clock.setTimeout(
-            () => this.startSnapshotSync(),
-            500 * this.snapshotAttempts,
-          );
+        if (ac.signal.aborted || this.snapshotGeneration !== sGen) return;
+        if (this.snapshotDeadlineTimer) {
+          this.snapshotDeadlineTimer.cancel();
+          this.snapshotDeadlineTimer = null;
         }
+        this.handleSnapshotFailure(
+          err instanceof Error ? err : new Error(String(err)),
+        );
       });
   }
 
-  private onSnapshotFetched(snapshot: Snapshot): void {
-    if (snapshot.epoch !== this.epoch) {
-      // Feed epoch changed mid-sync: restart connection handshake
-      this.epoch = snapshot.epoch;
-      this.lastSeq = 0;
-      this.pending.clear();
-      this.socket?.close();
+  private handleSnapshotFailure(err: Error): void {
+    if (this.state === 'offline' || this.state === 'idle') return;
+
+    this.snapshotAttempts += 1;
+    if (this.snapshotAttempts >= MAX_SNAPSHOT_RETRIES) {
+      this.setState('error');
+      this.listeners.onError?.(err);
       return;
     }
 
-    this.snapshotAttempts = 0;
-    this.symbols = snapshot.symbols;
-    this.quotes = snapshot.quotes.map((q) => ({ ...q }));
-    this.lastSeq = snapshot.seq;
-    this.metrics.snapshots += 1;
-    this.listeners.onSnapshotApplied?.(snapshot);
+    const delay = 500 * this.snapshotAttempts;
+    this.snapshotRetryTimer = this.clock.setTimeout(() => {
+      this.snapshotRetryTimer = null;
+      this.startSnapshotSync();
+    }, delay);
+  }
 
-    // Drop pending deltas <= snapshot.seq
+  private pruneObsoletePending(): void {
     for (const seq of this.pending.keys()) {
       if (seq <= this.lastSeq) {
         this.pending.delete(seq);
       }
     }
+  }
 
-    // Check contiguity with pending buffer
+  private handleBehindBuffer(minPendingSeq: number): boolean {
+    if (minPendingSeq <= this.lastSeq + 1) return false;
+
+    this.snapshotAttempts += 1;
+    if (this.snapshotAttempts >= MAX_SNAPSHOT_RETRIES) {
+      this.setState('error');
+      this.listeners.onError?.(
+        new Error(
+          `Snapshot at seq ${this.lastSeq} behind pending buffer at seq ${minPendingSeq}; exceeded retries`,
+        ),
+      );
+      return true;
+    }
+
+    this.setState('replaying');
+    this.replayTargetSeq = Math.max(this.replayTargetSeq, minPendingSeq - 1);
+    if (this.socket && this.socket.isOpen()) {
+      this.metrics.resumes += 1;
+      this.socket.send(
+        encodeClientMessage({
+          type: 'resume',
+          epoch: this.epoch,
+          seq: this.lastSeq,
+        }),
+      );
+    }
+    return true;
+  }
+
+  private handleDrainPendingWithGap(): boolean {
+    if (this.pending.size === 0) return false;
+
+    this.snapshotAttempts += 1;
+    if (this.snapshotAttempts >= MAX_SNAPSHOT_RETRIES) {
+      this.setState('error');
+      this.listeners.onError?.(
+        new Error(
+          'Gap in pending buffer after snapshot drain; exceeded retries',
+        ),
+      );
+      return true;
+    }
+    this.setState('replaying');
+    this.requestResume(true);
+    return true;
+  }
+
+  private onSnapshotFetched(snapshot: Snapshot): void {
+    if (this.state === 'offline' || this.state === 'idle') return;
+
+    if (snapshot.epoch !== this.epoch) {
+      this.epoch = snapshot.epoch;
+      this.lastSeq = 0;
+      this.baselineInstalled = false;
+      this.pending.clear();
+      this.socket?.close();
+      return;
+    }
+
+    this.symbols = snapshot.symbols;
+    this.quotes = snapshot.quotes.map((q) => ({ ...q }));
+    this.lastSeq = snapshot.seq;
+    this.baselineInstalled = true;
+    this.metrics.snapshots += 1;
+    this.listeners.onSnapshotApplied?.(snapshot);
+
+    this.pruneObsoletePending();
+
     if (this.pending.size > 0) {
       let minPendingSeq = Number.POSITIVE_INFINITY;
       for (const seq of this.pending.keys()) {
@@ -470,22 +631,22 @@ export class SyncEngine {
           minPendingSeq = seq;
         }
       }
-
-      if (minPendingSeq > this.lastSeq + 1) {
-        // Snapshot is too old for buffered deltas
-        this.snapshotAttempts += 1;
-        if (this.snapshotAttempts < MAX_SNAPSHOT_RETRIES) {
-          this.requestResume();
-          return;
-        }
-        this.setState('error');
+      if (this.handleBehindBuffer(minPendingSeq)) {
         return;
       }
     }
 
     this.drainPending();
-    if (this.pending.size === 0) {
+
+    if (this.handleDrainPendingWithGap()) {
+      return;
+    }
+
+    this.snapshotAttempts = 0;
+    if (this.lastSeq >= this.replayTargetSeq) {
       this.setState('live');
+    } else {
+      this.setState('replaying');
     }
   }
 
@@ -508,7 +669,7 @@ export class SyncEngine {
     }
   }
 
-  private onSocketClose(_code?: number): void {
+  private onSocketClose(_code?: number, _gen?: number): void {
     this.clearAllTimers();
     this.socket = null;
 
@@ -556,6 +717,14 @@ export class SyncEngine {
     if (this.liveStableTimer) {
       this.liveStableTimer.cancel();
       this.liveStableTimer = null;
+    }
+    if (this.snapshotRetryTimer) {
+      this.snapshotRetryTimer.cancel();
+      this.snapshotRetryTimer = null;
+    }
+    if (this.snapshotDeadlineTimer) {
+      this.snapshotDeadlineTimer.cancel();
+      this.snapshotDeadlineTimer = null;
     }
   }
 }
