@@ -48,8 +48,25 @@ export class WorkerFeedClient implements FeedClient {
 
   constructor(options: FeedClientOptions) {
     this.feedId = options.feedId;
-    this.wsBaseUrl = options.wsBaseUrl;
-    this.httpBaseUrl = options.httpBaseUrl;
+    const isBrowser = typeof window !== 'undefined';
+    const isLocalDevPort = isBrowser && window.location.port === '3000';
+    const wsProto =
+      isBrowser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+    this.wsBaseUrl =
+      options.wsBaseUrl ??
+      (isBrowser
+        ? isLocalDevPort
+          ? `ws://${window.location.hostname}:4000`
+          : `${wsProto}//${window.location.host}`
+        : 'ws://127.0.0.1:4000');
+    this.httpBaseUrl =
+      options.httpBaseUrl ??
+      (isBrowser
+        ? isLocalDevPort
+          ? `http://${window.location.hostname}:4000`
+          : window.location.origin
+        : 'http://127.0.0.1:4000');
     this.heartbeatMs = options.heartbeatMs;
 
     if (typeof window !== 'undefined') {

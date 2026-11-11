@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+declare const process: { env: Record<string, string | undefined> };
+
 test.describe('E2E Real-time recovery scenarios', () => {
   test('Scenario 1: Initial load connects live with 100 assets and deltas incrementing', async ({
     page,
@@ -133,10 +135,12 @@ test.describe('E2E Real-time recovery scenarios', () => {
       timeout: 15000,
     });
 
-    // Call server restart endpoint via test control
-    const restartRes = await request.post(
-      'http://127.0.0.1:4000/api/feeds/top100@100/restart',
-    );
+    // Call server restart endpoint via test control (direct port 4000 or via Caddy on :80)
+    const restartEndpoint =
+      process.env.TARGET_URL && !process.env.TARGET_URL.includes(':3000')
+        ? `${process.env.TARGET_URL}/api/feeds/top100@100/restart`
+        : 'http://127.0.0.1:4000/api/feeds/top100@100/restart';
+    const restartRes = await request.post(restartEndpoint);
     expect(restartRes.ok()).toBeTruthy();
 
     // After restart, client should recover and return to LIVE

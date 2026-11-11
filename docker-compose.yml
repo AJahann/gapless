@@ -3,20 +3,24 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+    ports:
+      - "4000:4000"
     environment:
       - PORT=4000
       - HOST=0.0.0.0
-      - CLIENT_ORIGIN=http://localhost,http://localhost:80,http://127.0.0.1
-      - REPLAY_WINDOW_SEC=30
+      - CLIENT_ORIGIN=http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80,http://localhost:3000,http://127.0.0.1:3000
+      - REPLAY_WINDOW_SEC=2
       - REPLAY_MAX_ENTRIES=100000
       - CHAOS_ENABLED=true
-      - TEST_CONTROL=false
+      - TEST_CONTROL=true
     restart: unless-stopped
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
+    ports:
+      - "3000:3000"
     environment:
       - PORT=3000
       - HOSTNAME=0.0.0.0
