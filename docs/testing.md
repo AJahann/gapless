@@ -54,18 +54,21 @@ for dirty symbols, stale badge appears on watchdog, sort cadence does not thrash
 sparkline ring wraps. Use `getByRole`/`getByLabelText`; no test ids without a
 stated reason.
 
-## Playwright (Phase 5)
+## Playwright (Phases 5 & 8)
 
-Real browser, real server, no MSW, no fixed sleeps — poll on counters/digest.
+Real browser, real server or Docker container stack, no MSW, no fixed sleeps — poll on counters/digest.
+Pass `TARGET_URL=http://127.0.0.1:80` (or `:3000`) to execute against running containers.
 
-1. Load → 100 rows live, deltas flowing.
-2. Cut 5 s → stale badge; restore → `replays` increases, `snapshots` unchanged.
-3. Cut longer than replay window → restore → `snapshots` +1.
-4. Chaos drop 10% + duplicate 5% + reorder 5% for 20 s → pause feed → client
-   reaches head seq → digest equals server digest.
-5. `chaos.silent` → watchdog reconnect within budget.
-6. Server restart (TEST_CONTROL) → epoch change → snapshot recovery.
-7. 10k feed: table stays virtualized (DOM row count bounded), no long-task storm.
+1. **Scenario 1**: Initial load connects live with 100 assets and deltas incrementing.
+2. **Scenario 2**: Short cut (< replay window) recovers via replay without snapshot refetch (`replays` increases, `snapshots` unchanged).
+3. **Scenario 3**: Long cut (> replay window) recovers via snapshot refetch (`snapshots` +1).
+4. **Scenario 4**: Server restart triggers epoch change and automatic snapshot recovery (`TEST_CONTROL` endpoint `/api/feeds/:id/restart`).
+5. **Scenario 5**: Worker mode (`?mode=worker`) connects live with flowing deltas and coalesced updates.
+6. **Scenario 6**: Rate switching (`100/s` to `500/s`), live FPS indicator badges, and Concepts Guide accordion expansion.
+7. **Scenario 7**: Chaos Drop injection (`drop: 25%`) triggers gap detection and replay recovery without stalling.
+8. **Scenario 8**: Chaos Duplicate injection (`duplicate: 20%`) increments duplicates counter without state corruption.
+9. **Scenario 9**: Chaos Reorder injection (`reorder: 25%`) detects out-of-order packets and buffers them cleanly.
+10. **Scenario 10**: Chaos Jitter (`jitterMs: 150ms`) applies transport latency while maintaining continuous live delivery.
+11. **Scenario 11**: Chaos Silent socket (`silent: true`) triggers heartbeat watchdog timeout and automatic reconnection.
 
-CI runs these with a short replay window and fixed seeds so both recovery paths
-are deterministic.
+CI runs short replay window and fixed seeds so recovery paths are deterministic.

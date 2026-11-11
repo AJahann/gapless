@@ -4,16 +4,17 @@ One branch per phase: `phase-N/<slug>` → PR into `main`. Do not start phase N+
 with phase N gates red. Every phase ends with `pnpm check` green plus its own
 acceptance items. Conventions and commands: `AGENTS.md`.
 
-| Phase | Deliverable                      | Key gates                                              | Status |
-| ----- | -------------------------------- | ------------------------------------------------------ | ------ |
-| 0     | Scaffold + docs                  | install, lint, tsc, vitest, next build, tsup green     | Done   |
-| 1     | Protocol + shared structures     | schema round-trips; ring/heap/backoff unit + bench     | Done   |
-| 2     | Server feed, snapshot, WS, chaos | integration tests over real sockets; replay boundaries | Done   |
-| 3     | Client sync engine               | scripted + property tests incl. convergence invariant  | Done   |
-| 4     | Web UI                           | live table, kill switch, metrics; component tests      | Done   |
-| 5     | E2E + CI                         | Playwright recovery scenarios green in CI              | Done   |
-| 6     | Worker mode + benchmarks         | measured before/after in docs/performance.md           | Done   |
-| 7     | Polish + deploy                  | README demo, Docker, compose, Caddy reverse proxy      | Done   |
+| Phase | Deliverable                        | Key gates                                               | Status |
+| ----- | ---------------------------------- | ------------------------------------------------------- | ------ |
+| 0     | Scaffold + docs                    | install, lint, tsc, vitest, next build, tsup green      | Done   |
+| 1     | Protocol + shared structures       | schema round-trips; ring/heap/backoff unit + bench      | Done   |
+| 2     | Server feed, snapshot, WS, chaos   | integration tests over real sockets; replay boundaries  | Done   |
+| 3     | Client sync engine                 | scripted + property tests incl. convergence invariant   | Done   |
+| 4     | Web UI                             | live table, kill switch, metrics; component tests       | Done   |
+| 5     | E2E + CI                           | Playwright recovery scenarios green in CI               | Done   |
+| 6     | Worker mode + benchmarks           | measured before/after in docs/performance.md            | Done   |
+| 7     | Polish + deploy                    | README demo, Docker, compose, Caddy reverse proxy       | Done   |
+| 8     | Tailwind v4 + controls + chaos E2E | Tailwind v4, rate selector, FPS meter, guide, 11/11 E2E | Done   |
 
 ---
 
@@ -110,7 +111,25 @@ laptop — report, don't hide).
 
 README with 30–60 s GIF (live → cut → restore → replay/snapshot counters),
 architecture diagram, design-doc links. Multi-stage Dockerfiles
-(`node:24-bookworm-slim`), compose with Caddy routing `/api/*` + `/ws/*` to
-server and the rest to web, `output: 'standalone'` already configured.
-Optional Cloudflare quick tunnel for a public demo. Keep demo read-only:
+(`node:24-bookworm-slim`), compose with Caddy routing `/api/*` + `/ws/*`
+server and rest web, `output: 'standalone'` already configured.
+Optional Cloudflare quick tunnel for public demo. Keep demo read-only:
 `TEST_CONTROL` and chaos policy reviewed before exposing publicly.
+
+## Phase 8 — Tailwind CSS v4, stream controls, and individual chaos E2E
+
+- Modernized `@gapless/web` UI using Tailwind CSS v4 with `@tailwindcss/postcss`,
+  custom `@theme` brand color definitions, and Biome `tailwindDirectives` support.
+- Replaced inline style objects across all components (`StatusBar`, `MarketTable`,
+  `TopMovers`, `TradeTape`, `MetricsPanel`, `ChaosPanel`, `page.tsx`) with Tailwind
+  utility classes.
+- Added live updates-per-second selector pills (`100/s`, `500/s`, `1k/s`, `5k/s`, `10k/s`)
+  in `StatusBar` dynamically modifying the URL parameter `?rate=` and reconnecting feeds.
+- Added rolling `useFps` hook (sampling frame delta times via `requestAnimationFrame`
+  over 500 ms intervals) with color-coded badges in both `StatusBar` and `MetricsPanel`.
+- Added educational `ConceptsGuide` accordion cards explaining `seq`, `epoch`, `gap`,
+  `replay`, `snapshot`, and `chaos` distributed stream mechanics.
+- Expanded Playwright E2E recovery suite (`e2e/recovery.spec.ts`) from 5 to 11 scenarios,
+  validating individual Chaos injection modes (Drop, Duplicate, Reorder, Jitter, Silent socket),
+  rate switching, FPS badges, and Docker container verification (`TARGET_URL=http://127.0.0.1:80`).
+- Resolved replay gap deadlock in `SyncEngine` when loss occurs during in-band replay.

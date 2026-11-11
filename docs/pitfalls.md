@@ -37,3 +37,13 @@ Monorepo and platform notes. Add entries when something bites, with the fix.
   comparison meaningless.
 - Chaos must be seeded and per connection, otherwise tests are not reproducible
   and one visitor can degrade another's stream.
+- **Replay packet loss deadlock**: if packet loss drops deltas within an in-band
+  replay response itself, the client engine entered `replaying` and previously
+  refused all further `requestResume()` calls until `pending` drained. Because
+  the missing delta was never fetched, `pending` never drained, deadlocking
+  the engine. Fixed by allowing `gapTimer` and `droppedTailTimer` to force
+  a re-request after timeout even while in `replaying`.
+- **Docker layer cache invalidation**: in multi-package pnpm monorepos, copying
+  entire package directories (`COPY apps/web ./apps/web`) before `pnpm install`
+  busts the dependency install cache on every single source edit. Copy only the
+  isolated `package.json` manifests before running `pnpm install --frozen-lockfile`.
