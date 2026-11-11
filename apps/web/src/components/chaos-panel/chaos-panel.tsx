@@ -55,62 +55,25 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
   }
 
   return (
-    <div
-      style={{
-        background: '#161b26',
-        border: '1px solid #2a3142',
-        borderRadius: '8px',
-        padding: '1rem',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <span
-          style={{
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            color: '#8a93a6',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
+    <div className='rounded-lg border border-brand-border bg-brand-card p-4'>
+      <div className='mb-3 flex items-center justify-between'>
+        <span className='text-xs font-bold uppercase tracking-wider text-brand-muted'>
           Chaos Injection (Per-Connection)
         </span>
         <button
           type='button'
           onClick={handleReset}
-          style={{
-            background: 'transparent',
-            border: '1px solid #2a3142',
-            color: '#8a93a6',
-            borderRadius: '4px',
-            fontSize: '0.75rem',
-            padding: '0.2rem 0.5rem',
-            cursor: 'pointer',
-          }}
+          className='cursor-pointer rounded border border-brand-border bg-transparent px-2 py-0.5 text-[11px] text-brand-muted transition hover:bg-brand-card-hover hover:text-brand-fg'
         >
           Reset All
         </button>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: '1rem',
-          fontSize: '0.8rem',
-        }}
-      >
+      <div className='grid grid-cols-2 gap-4 text-xs sm:grid-cols-3'>
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Drop:</span>
-            <span style={{ fontWeight: 600 }}>{drop}%</span>
+          <div className='mb-1 flex justify-between'>
+            <span className='text-brand-muted'>Drop:</span>
+            <span className='font-semibold text-brand-fg'>{drop}%</span>
           </div>
           <input
             type='range'
@@ -122,14 +85,14 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
               setDrop(val);
               applyChaos({ drop: val });
             }}
-            style={{ width: '100%' }}
+            className='w-full accent-rose-500'
           />
         </div>
 
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Duplicate:</span>
-            <span style={{ fontWeight: 600 }}>{duplicate}%</span>
+          <div className='mb-1 flex justify-between'>
+            <span className='text-brand-muted'>Duplicate:</span>
+            <span className='font-semibold text-brand-fg'>{duplicate}%</span>
           </div>
           <input
             type='range'
@@ -141,14 +104,14 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
               setDuplicate(val);
               applyChaos({ duplicate: val });
             }}
-            style={{ width: '100%' }}
+            className='w-full accent-amber-500'
           />
         </div>
 
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Reorder:</span>
-            <span style={{ fontWeight: 600 }}>{reorder}%</span>
+          <div className='mb-1 flex justify-between'>
+            <span className='text-brand-muted'>Reorder:</span>
+            <span className='font-semibold text-brand-fg'>{reorder}%</span>
           </div>
           <input
             type='range'
@@ -160,14 +123,14 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
               setReorder(val);
               applyChaos({ reorder: val });
             }}
-            style={{ width: '100%' }}
+            className='w-full accent-purple-500'
           />
         </div>
 
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Jitter:</span>
-            <span style={{ fontWeight: 600 }}>{jitterMs}ms</span>
+          <div className='mb-1 flex justify-between'>
+            <span className='text-brand-muted'>Jitter:</span>
+            <span className='font-semibold text-brand-fg'>{jitterMs}ms</span>
           </div>
           <input
             type='range'
@@ -180,19 +143,12 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
               setJitterMs(val);
               applyChaos({ jitterMs: val });
             }}
-            style={{ width: '100%' }}
+            className='w-full accent-blue-500'
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              cursor: 'pointer',
-            }}
-          >
+        <div className='flex items-center'>
+          <label className='flex cursor-pointer items-center gap-2'>
             <input
               type='checkbox'
               checked={silent}
@@ -201,14 +157,14 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
                 setSilent(val);
                 applyChaos({ silent: val });
               }}
+              className='accent-brand-down'
             />
             <span
-              style={{
-                color: silent ? '#ea3943' : 'inherit',
-                fontWeight: silent ? 600 : 400,
-              }}
+              className={`text-xs ${
+                silent ? 'font-bold text-brand-down' : 'text-brand-muted'
+              }`}
             >
-              Silent socket
+              Silent socket (half-open)
             </span>
           </label>
         </div>
