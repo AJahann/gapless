@@ -62,6 +62,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
         </span>
         <button
           type='button'
+          data-testid='chaos-reset'
           onClick={handleReset}
           className='cursor-pointer rounded border border-brand-border bg-transparent px-2 py-0.5 text-[11px] text-brand-muted transition hover:bg-brand-card-hover hover:text-brand-fg'
         >
@@ -77,6 +78,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            data-testid='chaos-drop'
             min={0}
             max={50}
             value={drop}
@@ -96,6 +98,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            data-testid='chaos-duplicate'
             min={0}
             max={30}
             value={duplicate}
@@ -115,6 +118,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            data-testid='chaos-reorder'
             min={0}
             max={30}
             value={reorder}
@@ -134,6 +138,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            data-testid='chaos-jitter'
             min={0}
             max={300}
             step={10}
@@ -151,6 +156,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           <label className='flex cursor-pointer items-center gap-2'>
             <input
               type='checkbox'
+              data-testid='chaos-silent'
               checked={silent}
               onChange={(e) => {
                 const val = e.target.checked;

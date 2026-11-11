@@ -200,4 +200,176 @@ test.describe('E2E Real-time recovery scenarios', () => {
       page.locator('text=Gate rule: delta valid if seq === lastSeq + 1.'),
     ).toBeVisible();
   });
+
+  test('Scenario 7: Chaos Drop injection triggers gap detection and replay recovery', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const gapsCell = page.getByTestId('metric-gaps');
+    const initialGaps = Number.parseInt(
+      (await gapsCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    // Set drop rate to 25% via slider
+    const dropInput = page.getByTestId('chaos-drop');
+    await dropInput.fill('25');
+
+    // Wait for gaps and replays to be recorded by SyncEngine
+    const replaysCell = page.getByTestId('metric-replayed');
+    const initialReplays = Number.parseInt(
+      (await replaysCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    await expect(async () => {
+      const currentGaps = Number.parseInt(
+        (await gapsCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      const currentReplays = Number.parseInt(
+        (await replaysCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(currentGaps).toBeGreaterThan(initialGaps);
+      expect(currentReplays).toBeGreaterThan(initialReplays);
+    }).toPass({ timeout: 10000 });
+
+    // Reset chaos and ensure status recovers to LIVE
+    await page.getByTestId('chaos-reset').click();
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 10000,
+    });
+  });
+
+  test('Scenario 8: Chaos Duplicate injection increments duplicates without state corruption', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const duplicatesCell = page.getByTestId('metric-duplicates');
+    const initialDuplicates = Number.parseInt(
+      (await duplicatesCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    // Set duplicate rate to 20%
+    const duplicateInput = page.getByTestId('chaos-duplicate');
+    await duplicateInput.fill('20');
+
+    // Verify duplicate counter increments
+    await expect(async () => {
+      const currentDuplicates = Number.parseInt(
+        (await duplicatesCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(currentDuplicates).toBeGreaterThan(initialDuplicates);
+    }).toPass({ timeout: 10000 });
+
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE');
+    await page.getByTestId('chaos-reset').click();
+  });
+
+  test('Scenario 9: Chaos Reorder injection detects out-of-order packets and buffers', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const gapsCell = page.getByTestId('metric-gaps');
+    const initialGaps = Number.parseInt(
+      (await gapsCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    // Set reorder rate to 25%
+    const reorderInput = page.getByTestId('chaos-reorder');
+    await reorderInput.fill('25');
+
+    // Reordered deltas will cause non-consecutive seqs triggering gap/reorder handling
+    await expect(async () => {
+      const currentGaps = Number.parseInt(
+        (await gapsCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(currentGaps).toBeGreaterThan(initialGaps);
+    }).toPass({ timeout: 10000 });
+
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE');
+    await page.getByTestId('chaos-reset').click();
+  });
+
+  test('Scenario 10: Chaos Jitter applies latency while maintaining live stream', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const deltasInCell = page.getByTestId('metric-deltas-in');
+    const initialDeltas = Number.parseInt(
+      (await deltasInCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    // Set jitter to 150ms
+    const jitterInput = page.getByTestId('chaos-jitter');
+    await jitterInput.fill('150');
+
+    // Confirm deltas continue to flow despite jitter
+    await expect(async () => {
+      const currentDeltas = Number.parseInt(
+        (await deltasInCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(currentDeltas).toBeGreaterThan(initialDeltas + 20);
+    }).toPass({ timeout: 10000 });
+
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE');
+    await page.getByTestId('chaos-reset').click();
+  });
+
+  test('Scenario 11: Chaos Silent socket triggers watchdog and automatic reconnect', async ({
+    page,
+  }) => {
+    await page.goto('/?universe=top100&rate=100');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const reconnectsCell = page.getByTestId('metric-reconnects');
+    const initialReconnects = Number.parseInt(
+      (await reconnectsCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
+    // Turn on silent socket (half-open)
+    const silentCheckbox = page.getByTestId('chaos-silent');
+    await silentCheckbox.check();
+
+    // Heartbeat timeout watchdog will detect absence of data and trigger reconnect
+    await expect(async () => {
+      const currentReconnects = Number.parseInt(
+        (await reconnectsCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(currentReconnects).toBeGreaterThan(initialReconnects);
+    }).toPass({ timeout: 15000 });
+
+    // Reset chaos and verify system returns to LIVE
+    await page.getByTestId('chaos-reset').click();
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+  });
 });

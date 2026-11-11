@@ -315,12 +315,12 @@ export class SyncEngine {
     if (!this.gapTimer) {
       this.gapTimer = this.clock.setTimeout(() => {
         this.gapTimer = null;
-        this.requestResume();
+        this.requestResume(true);
       }, GAP_TIMEOUT_MS);
     }
 
     if (this.pending.size > MAX_PENDING_SIZE) {
-      this.requestResume();
+      this.requestResume(true);
     }
   }
 
@@ -365,7 +365,7 @@ export class SyncEngine {
       if (!this.droppedTailTimer) {
         this.droppedTailTimer = this.clock.setTimeout(() => {
           this.droppedTailTimer = null;
-          this.requestResume();
+          this.requestResume(true);
         }, DROPPED_TAIL_TIMEOUT_MS);
       }
     }
@@ -383,9 +383,9 @@ export class SyncEngine {
     this.startSnapshotSync();
   }
 
-  private requestResume(): void {
+  private requestResume(force = false): void {
     if (
-      this.state === 'replaying' ||
+      (!force && this.state === 'replaying') ||
       this.state === 'syncing' ||
       this.state === 'offline' ||
       this.state === 'idle'
