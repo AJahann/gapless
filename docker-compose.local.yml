@@ -1,0 +1,12 @@
+# Local development and testing compose override
+# Run with: docker compose -f docker-compose.yml -f docker-compose.local.yml up
+services:
+  server:
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      - TEST_CONTROL=true
+
+  web:
+    ports:
+      - "127.0.0.1:3000:3000"

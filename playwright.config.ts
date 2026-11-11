@@ -30,8 +30,10 @@ export default defineConfig({
         {
           command: 'node apps/server/dist/server.js',
           url: 'http://127.0.0.1:4000/api/health',
-          reuseExistingServer: !process.env.CI,
+          reuseExistingServer: Boolean(process.env.REUSE_EXISTING_SERVER),
           timeout: 30000,
+          stdout: 'pipe',
+          stderr: 'pipe',
           env: {
             PORT: '4000',
             HOST: '127.0.0.1',
@@ -46,8 +48,10 @@ export default defineConfig({
           command:
             'node apps/web/node_modules/next/dist/bin/next dev apps/web --port 3000',
           url: 'http://127.0.0.1:3000',
-          reuseExistingServer: !process.env.CI,
-          timeout: 60000,
+          reuseExistingServer: Boolean(process.env.REUSE_EXISTING_SERVER),
+          timeout: 120000,
+          stdout: 'pipe',
+          stderr: 'pipe',
           env: {
             PORT: '3000',
             HOSTNAME: '127.0.0.1',

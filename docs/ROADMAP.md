@@ -1,20 +1,48 @@
 # Roadmap
 
-One branch per phase: `phase-N/<slug>` → PR into `main`. Do not start phase N+1
-with phase N gates red. Every phase ends with `pnpm check` green plus its own
-acceptance items. Conventions and commands: `AGENTS.md`.
+## Technical review qualification
 
-| Phase | Deliverable                        | Key gates                                               | Status |
-| ----- | ---------------------------------- | ------------------------------------------------------- | ------ |
-| 0     | Scaffold + docs                    | install, lint, tsc, vitest, next build, tsup green      | Done   |
-| 1     | Protocol + shared structures       | schema round-trips; ring/heap/backoff unit + bench      | Done   |
-| 2     | Server feed, snapshot, WS, chaos   | integration tests over real sockets; replay boundaries  | Done   |
-| 3     | Client sync engine                 | scripted + property tests incl. convergence invariant   | Done   |
-| 4     | Web UI                             | live table, kill switch, metrics; component tests       | Done   |
-| 5     | E2E + CI                           | Playwright recovery scenarios green in CI               | Done   |
-| 6     | Worker mode + benchmarks           | measured before/after in docs/performance.md            | Done   |
-| 7     | Polish + deploy                    | README demo, Docker, compose, Caddy reverse proxy       | Done   |
-| 8     | Tailwind v4 + controls + chaos E2E | Tailwind v4, rate selector, FPS meter, guide, 11/11 E2E | Done   |
+The delivery statuses below record historical feature completion, not proof
+that every acceptance gate is satisfied. A technical review of baseline
+`a3c0ecb` identified correctness, exposure, test-coverage and measurement gaps.
+Use [Technical review and remediation roadmap](TECH-LEAD-REVIEW.md) for findings
+F01-F21 and repair phases R0-R7. Start with R0/R1; do not add another feature
+phase before closing the relevant correctness and public-deployment gates.
+
+In particular, published latency/coalescing columns are unverified (the runner
+uses constants/estimates); component, Worker lifecycle and digest-convergence
+E2E gates remain incomplete. See the review for executed checks and blockers.
+
+## Remediation roadmap (Phases R0–R7)
+
+See [TECH-LEAD-REVIEW.md](TECH-LEAD-REVIEW.md) for full rationale and findings F01–F21.
+
+| Phase | Remediation Scope                                                     | Priority             | Status      |
+| ----- | --------------------------------------------------------------------- | -------------------- | ----------- |
+| R0    | Honest baseline & immediate exposure containment (F01, F15, F17, F20) | P0                   | In Progress |
+| R1    | Repair sync state machine & async ownership (F03, F04, F06, F12, F21) | P0 / Correctness     | Pending     |
+| R2    | Enforce epoch, identity & numeric contracts (F05, F07, F08, F11)      | P0 / Correctness     | Pending     |
+| R3    | Bound backend resources & transport work (F02, F09, F10, F11, F20)    | P1 / Hardening       | Pending     |
+| R4    | Align frontend state, controls & freshness (F13, F14, F19)            | P1 / UX              | Pending     |
+| R5    | Turn tests into evidence: deterministic harnesses & convergence (F17) | P1 / Verification    | Pending     |
+| R6    | Real instrumentation & measured optimization (F15, F16, F18)          | P1 / Performance     | Pending     |
+| R7    | Structural cleanup & release reconciliation (F19, F20)                | P2 / Maintainability | Pending     |
+
+## Historical feature roadmap (pre-remediation)
+
+One branch per phase: `phase-N/<slug>` → PR into `main`. Delivery statuses below reflect pre-remediation historical delivery:
+
+| Phase | Deliverable                        | Key gates                                               | Historical Status       |
+| ----- | ---------------------------------- | ------------------------------------------------------- | ----------------------- |
+| 0     | Scaffold + docs                    | install, lint, tsc, vitest, next build, tsup green      | Completed               |
+| 1     | Protocol + shared structures       | schema round-trips; ring/heap/backoff unit + bench      | Completed               |
+| 2     | Server feed, snapshot, WS, chaos   | integration tests over real sockets; replay boundaries  | Completed               |
+| 3     | Client sync engine                 | scripted + property tests incl. convergence invariant   | Completed               |
+| 4     | Web UI                             | live table, kill switch, metrics; component tests       | Completed               |
+| 5     | E2E + CI                           | Playwright recovery scenarios green in CI               | Completed               |
+| 6     | Worker mode + benchmarks           | measured before/after in docs/performance.md            | Completed (needs R6)    |
+| 7     | Polish + deploy                    | README demo, Docker, compose, Caddy reverse proxy       | Completed (needs R0/R3) |
+| 8     | Tailwind v4 + controls + chaos E2E | Tailwind v4, rate selector, FPS meter, guide, 11/11 E2E | Completed               |
 
 ---
 

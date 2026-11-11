@@ -190,6 +190,32 @@ describe('Server HTTP and WebSocket integration', () => {
       const newEpoch = (restartRes.json() as { epoch: string }).epoch;
       expect(newEpoch).not.toBe(digestBody.epoch);
     });
+
+    it('denies test control routes when testControl is false or omitted', async () => {
+      app = await buildApp({
+        clientOrigins: ['http://localhost:3000'],
+      });
+
+      const routes = [
+        { method: 'GET' as const, url: '/api/feeds/top100@100/digest' },
+        { method: 'POST' as const, url: '/api/feeds/top100@100/pause' },
+        { method: 'POST' as const, url: '/api/feeds/top100@100/unpause' },
+        { method: 'POST' as const, url: '/api/feeds/top100@100/restart' },
+      ];
+
+      const responses = await Promise.all(
+        routes.map((route) =>
+          app!.inject({
+            method: route.method,
+            url: route.url,
+          }),
+        ),
+      );
+
+      for (const res of responses) {
+        expect(res.statusCode).toBe(404);
+      }
+    });
   });
 
   describe('WebSocket integration', () => {
@@ -354,6 +380,28 @@ describe('Server HTTP and WebSocket integration', () => {
       for (let i = 0; i < cleanDeltas.length - 1; i += 1) {
         expect(cleanDeltas[i + 1]!).toBe(cleanDeltas[i]! + 1);
       }
+    });
+
+    it('ignores ws pause and unpause messages when testControl is false', async () => {
+      app = await buildApp({ clientOrigins: ['http://localhost:3000'] });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+
+      const ws = await connectWs('/ws/feeds/top100@100');
+      ws.send(
+        encodeClientMessage({
+          type: 'hello',
+          v: PROTOCOL_VERSION,
+          feed: 'top100@100',
+        }),
+      );
+      await waitForNextMessage(ws); // welcome
+
+      // Attempt to pause via WS message
+      ws.send(encodeClientMessage({ type: 'pause' }));
+
+      // Deltas must continue flowing because testControl is false
+      const deltas = await collectDeltas(ws, 3);
+      expect(deltas.length).toBeGreaterThanOrEqual(3);
     });
 
     it('closes socket on protocol violation', async () => {

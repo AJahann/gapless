@@ -26,7 +26,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       replayMaxEntries: options.replayMaxEntries,
       feedIdleTtlSec: options.feedIdleTtlSec,
     });
-  const testControl = options.testControl ?? true;
+  const testControl = options.testControl ?? false;
 
   await app.register(cors, { origin: options.clientOrigins });
   await app.register(fastifyWebsocket);

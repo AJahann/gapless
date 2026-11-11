@@ -1,4 +1,5 @@
 {
+  "_provenance_warning": "Historical artifact: p95Latency and coalescing values in this file were placeholder constants/estimates, not instrumented measurements (see docs/TECH-LEAD-REVIEW.md F15).",
   "commit": "59612ac",
   "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
   "browserVersion": "158.0.8127.18",

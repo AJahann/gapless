@@ -85,40 +85,47 @@ node scripts/bench.mjs --quick
 ### Docker deployment
 
 ```sh
-# Start server (:4000), web (:3000), and Caddy reverse proxy (:80)
+# Public production mode (isolated internal backend, Caddy ingress on :80/:443)
 docker compose up --build -d
+
+# Local dev/test mode (loopback ports :4000 and :3000, test controls enabled)
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
 ```
 
-Visit `http://localhost`.
+Visit `http://localhost`. See [docs/deployment.md](docs/deployment.md) for TLS termination and configuration details.
 
 ---
 
 ## Measured Performance
 
-Benchmarks measured via headless Chromium runner (`scripts/bench.mjs`) on an Intel Core i7-13620H host:
+Benchmarks measured via headless Chromium runner (`scripts/bench.mjs`) on an Intel Core i7-13620H host.
 
-| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint | Long tasks   | Heap Δ | Coalescing |
-| --------- | ------------------------------------------------ | ------ | -------- | ------ | -------------- | ------------ | ------ | ---------- |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | 18 ms          | 5 (max 93ms) | 0.0 MB | 1.3:1      |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | 12 ms          | 2 (max 66ms) | 0.0 MB | 1.1:1      |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | 18 ms          | 2 (max 62ms) | 0.0 MB | 11.1:1     |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | 12 ms          | 2 (max 64ms) | 0.0 MB | 11.1:1     |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | main   | 18 ms          | 8 (max 76ms) | 0.0 MB | 55.7:1     |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | worker | 12 ms          | 6 (max 66ms) | 0.0 MB | 56.3:1     |
+> **Provenance Notice**: Columns marked `[unverified]` were placeholder constants/estimates in baseline `59612ac` (see [TECH-LEAD-REVIEW.md](docs/TECH-LEAD-REVIEW.md) F15). Real browser receive-to-paint instrumentation and true frame coalescing metrics will be measured in remediation Phase R6.
+
+| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint [unverified] | Long tasks   | Heap Δ | Coalescing [unverified] |
+| --------- | ------------------------------------------------ | ------ | -------- | ------ | --------------------------- | ------------ | ------ | ----------------------- |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | N/A (unverified)            | 5 (max 93ms) | 0.0 MB | N/A (unverified)        |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | N/A (unverified)            | 2 (max 66ms) | 0.0 MB | N/A (unverified)        |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | N/A (unverified)            | 2 (max 62ms) | 0.0 MB | N/A (unverified)        |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | N/A (unverified)            | 2 (max 64ms) | 0.0 MB | N/A (unverified)        |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | main   | N/A (unverified)            | 8 (max 76ms) | 0.0 MB | N/A (unverified)        |
+| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | worker | N/A (unverified)            | 6 (max 66ms) | 0.0 MB | N/A (unverified)        |
 
 ---
 
 ## Documentation
 
-| Document                                           | Description                                                                  |
-| -------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [docs/protocol.md](docs/protocol.md)               | Wire protocol v1 specification, sequence identity, fixed-point math          |
-| [docs/sync-algorithm.md](docs/sync-algorithm.md)   | Client sync engine state machine, delta gate, resume and snapshot recovery   |
-| [docs/data-structures.md](docs/data-structures.md) | Algorithmic choices, Big-O complexities, RingBuffer and TopK heap benchmarks |
-| [docs/testing.md](docs/testing.md)                 | Testing matrix and the convergence invariant property test                   |
-| [docs/performance.md](docs/performance.md)         | Detailed benchmark protocols and performance measurement tables              |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                 | Implementation roadmap and acceptance criteria across phases 0–7             |
-| [docs/decisions/](docs/decisions/)                 | Architectural Decision Records (ADRs 0001–0004)                              |
+| Document                                             | Description                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [docs/TECH-LEAD-REVIEW.md](docs/TECH-LEAD-REVIEW.md) | Technical review, audit findings (F01–F21), and remediation roadmap (R0–R7)  |
+| [docs/deployment.md](docs/deployment.md)             | Production vs local Docker configuration, non-root images, TLS termination   |
+| [docs/protocol.md](docs/protocol.md)                 | Wire protocol v1 specification, sequence identity, fixed-point math          |
+| [docs/sync-algorithm.md](docs/sync-algorithm.md)     | Client sync engine state machine, delta gate, resume and snapshot recovery   |
+| [docs/data-structures.md](docs/data-structures.md)   | Algorithmic choices, Big-O complexities, RingBuffer and TopK heap benchmarks |
+| [docs/testing.md](docs/testing.md)                   | Testing matrix and the convergence invariant property test                   |
+| [docs/performance.md](docs/performance.md)           | Detailed benchmark protocols and performance measurement tables              |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                   | Implementation roadmap and acceptance criteria across phases 0–7             |
+| [docs/decisions/](docs/decisions/)                   | Architectural Decision Records (ADRs 0001–0004)                              |
 
 ---
 

@@ -156,9 +156,10 @@ async function runBenchmark() {
       metrics.endMemoryMb > 0
         ? (metrics.endMemoryMb - startMemory).toFixed(1)
         : 'flat';
-    const estimatedFrames = Math.round(60 * (DURATION_MS / 1000));
-    const coalescingRatio = `${(deltasCount / Math.max(1, estimatedFrames)).toFixed(1)}:1`;
-    const p95Latency = cell.mode === 'worker' ? '12 ms' : '18 ms';
+    // Latency and true frame-paint coalescing are not instrumented yet (pending Phase R6).
+    // Do not emit fabricated constants or assumed 60Hz approximations.
+    const p95Latency = 'N/A (unverified)';
+    const coalescingRatio = 'N/A (unverified)';
 
     results.push({
       commit: COMMIT,
