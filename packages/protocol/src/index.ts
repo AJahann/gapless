@@ -7,20 +7,81 @@ export const CLOSE_CODES = {
   PROTOCOL_VIOLATION: 4001,
   UNAUTHORIZED_ORIGIN: 4002,
   HELLO_TIMEOUT: 4003,
+  EPOCH_RESET: 4004,
   SERVER_SHUTDOWN: 1001,
 } as const;
 
 export type CloseCode = (typeof CLOSE_CODES)[keyof typeof CLOSE_CODES];
 
+export const SUPPORTED_UNIVERSES = ['top100', 'top10k'] as const;
+export type SupportedUniverse = (typeof SUPPORTED_UNIVERSES)[number];
+
+export const feedIdSchema = z
+  .string()
+  .regex(/^[0-9a-z]+@\d+$/i)
+  .refine(
+    (val) => {
+      const [universe, rateStr] = val.split('@');
+      if (!universe || !rateStr) return false;
+      if (!SUPPORTED_UNIVERSES.includes(universe as SupportedUniverse)) {
+        return false;
+      }
+      const rate = Number.parseInt(rateStr, 10);
+      return Number.isSafeInteger(rate) && rate >= 1 && rate <= 10000;
+    },
+    {
+      message:
+        'Invalid feed ID: expected <universe>@<rate> with universe top100|top10k and rate 1-10000',
+    },
+  );
+
+export function parseFeedId(feedId: string): {
+  universe: SupportedUniverse;
+  rate: number;
+} {
+  feedIdSchema.parse(feedId);
+  const [universe, rateStr] = feedId.split('@');
+  return {
+    universe: universe as SupportedUniverse,
+    rate: Number.parseInt(rateStr!, 10),
+  };
+}
+
 // Delta tuple: [seq, symbolIndex, price, size, side, ts]
 // side: 0 = buy, 1 = sell
 export const deltaSchema = z.tuple([
-  z.number().int().positive(),
-  z.number().int().nonnegative(),
-  z.number().int(),
-  z.number().int().nonnegative(),
+  z
+    .number()
+    .int()
+    .positive()
+    .refine((n) => Number.isSafeInteger(n), 'seq must be a safe integer'),
+  z
+    .number()
+    .int()
+    .nonnegative()
+    .refine(
+      (n) => Number.isSafeInteger(n),
+      'symbolIndex must be a safe integer',
+    ),
+  z
+    .number()
+    .int()
+    .positive()
+    .refine(
+      (n) => Number.isSafeInteger(n),
+      'price must be a safe positive integer',
+    ),
+  z
+    .number()
+    .int()
+    .nonnegative()
+    .refine((n) => Number.isSafeInteger(n), 'size must be a safe integer'),
   z.union([z.literal(0), z.literal(1)]),
-  z.number().int().nonnegative(),
+  z
+    .number()
+    .int()
+    .nonnegative()
+    .refine((n) => Number.isSafeInteger(n), 'ts must be a safe integer'),
 ]);
 export type Delta = z.infer<typeof deltaSchema>;
 
@@ -32,24 +93,71 @@ export const symbolInfoSchema = z.object({
 export type SymbolInfo = z.infer<typeof symbolInfoSchema>;
 
 export const quoteSchema = z.object({
-  price: z.number().int(),
-  open: z.number().int(),
-  high: z.number().int(),
-  low: z.number().int(),
-  volume: z.number().int().nonnegative(),
-  trades: z.number().int().nonnegative(),
-  lastSeq: z.number().int().nonnegative(),
-  lastTs: z.number().int().nonnegative(),
+  price: z
+    .number()
+    .int()
+    .positive()
+    .refine((n) => Number.isSafeInteger(n)),
+  open: z
+    .number()
+    .int()
+    .positive()
+    .refine((n) => Number.isSafeInteger(n)),
+  high: z
+    .number()
+    .int()
+    .positive()
+    .refine((n) => Number.isSafeInteger(n)),
+  low: z
+    .number()
+    .int()
+    .positive()
+    .refine((n) => Number.isSafeInteger(n)),
+  volume: z
+    .union([z.string().regex(/^\d+$/), z.number().int().nonnegative()])
+    .transform((v) => String(v)),
+  trades: z
+    .number()
+    .int()
+    .nonnegative()
+    .refine((n) => Number.isSafeInteger(n)),
+  lastSeq: z
+    .number()
+    .int()
+    .nonnegative()
+    .refine((n) => Number.isSafeInteger(n)),
+  lastTs: z
+    .number()
+    .int()
+    .nonnegative()
+    .refine((n) => Number.isSafeInteger(n)),
 });
 export type Quote = z.infer<typeof quoteSchema>;
 
-export const snapshotSchema = z.object({
-  feed: z.string().min(1),
-  epoch: z.string().min(1),
-  seq: z.number().int().nonnegative(),
-  symbols: z.array(symbolInfoSchema),
-  quotes: z.array(quoteSchema),
-});
+export const snapshotSchema = z
+  .object({
+    feed: z.string().min(1),
+    epoch: z.string().min(1),
+    seq: z
+      .number()
+      .int()
+      .nonnegative()
+      .refine((n) => Number.isSafeInteger(n)),
+    symbols: z.array(symbolInfoSchema),
+    quotes: z.array(quoteSchema),
+  })
+  .refine(
+    (snap) => snap.symbols.length === snap.quotes.length,
+    'Snapshot symbols and quotes count mismatch',
+  )
+  .refine((snap) => {
+    for (let i = 0; i < snap.symbols.length; i++) {
+      if (snap.symbols[i]?.index !== i) {
+        return false;
+      }
+    }
+    return true;
+  }, 'Snapshot symbol indices must be contiguous starting from 0');
 export type Snapshot = z.infer<typeof snapshotSchema>;
 
 // Client -> Server messages (.strict() to reject unknown keys)
@@ -212,6 +320,23 @@ export function safeDecodeServerMessage(raw: unknown) {
   try {
     const payload = parsePayload(raw);
     return serverMessageSchema.safeParse(payload);
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
+export function decodeSnapshot(raw: unknown): Snapshot {
+  const payload = parsePayload(raw);
+  return snapshotSchema.parse(payload);
+}
+
+export function safeDecodeSnapshot(raw: unknown) {
+  try {
+    const payload = parsePayload(raw);
+    return snapshotSchema.safeParse(payload);
   } catch (error) {
     return {
       success: false as const,

@@ -21,7 +21,7 @@ See [TECH-LEAD-REVIEW.md](TECH-LEAD-REVIEW.md) for full rationale and findings F
 | ----- | --------------------------------------------------------------------- | -------------------- | ----------- |
 | R0    | Honest baseline & immediate exposure containment (F01, F15, F17, F20) | P0                   | Done        |
 | R1    | Repair sync state machine & async ownership (F03, F04, F06, F12, F21) | P0 / Correctness     | Done        |
-| R2    | Enforce epoch, identity & numeric contracts (F05, F07, F08, F11)      | P0 / Correctness     | In Progress |
+| R2    | Enforce epoch, identity & numeric contracts (F05, F07, F08, F11)      | P0 / Correctness     | Done        |
 | R3    | Bound backend resources & transport work (F02, F09, F10, F11, F20)    | P1 / Hardening       | Pending     |
 | R4    | Align frontend state, controls & freshness (F13, F14, F19)            | P1 / UX              | Pending     |
 | R5    | Turn tests into evidence: deterministic harnesses & convergence (F17) | P1 / Verification    | Pending     |

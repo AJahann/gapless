@@ -103,7 +103,7 @@ const MarketTableRow = memo(function MarketTableRow({
   const priceUsd = quote.price / 1000000;
   const highUsd = quote.high / 1000000;
   const lowUsd = quote.low / 1000000;
-  const volumeUsd = quote.volume / 10000000000; // price (1e6) * size (1e4) = 1e10
+  const volumeUsd = Number(quote.volume) / 10000000000; // price (1e6) * size (1e4) = 1e10
 
   const changePct =
     quote.open > 0 ? ((quote.price - quote.open) / quote.open) * 100 : 0;

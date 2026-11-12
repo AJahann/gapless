@@ -1,4 +1,5 @@
 import {
+  CLOSE_CODES,
   type Delta,
   type DeltasMessage,
   type HeartbeatMessage,
@@ -54,6 +55,8 @@ describe('SyncEngine test matrix', () => {
       feedId: 'top100@100',
       clock,
       heartbeatMs: options?.heartbeatMs ?? 1000,
+      symbols: initialUniverse.symbols,
+      quotes: initialUniverse.quotes,
       connectSocket: (onOpen, onMessage, onClose) => {
         onSocketMessageCb = onMessage;
         onSocketCloseCb = onClose;
@@ -726,6 +729,107 @@ describe('SyncEngine test matrix', () => {
       deliver({ type: 'deltas', items: [d15] });
       expect(engine.currentState).toBe('live');
       expect(engine.currentMetrics.replays).toBe(5);
+    });
+
+    it('F05: socket close with EPOCH_RESET reconnects immediately without backoff delay', async () => {
+      const engine = setupEngine();
+      engine.start();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'live',
+      });
+      expect(engine.currentState).toBe('live');
+
+      // Socket closed by server with EPOCH_RESET code
+      onSocketCloseCb(CLOSE_CODES.EPOCH_RESET);
+
+      // Reconnect is scheduled immediately (0ms delay)
+      await Promise.resolve();
+      expect(engine.currentState).toBe('connecting');
+      expect(socketOpen).toBe(true);
+    });
+
+    it('F07: delta with unknown symbol index does not advance lastSeq and triggers snapshot resync', () => {
+      const engine = setupEngine();
+      engine.start();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'live',
+      });
+
+      // Universe has 100 symbols (indices 0..99). Deliver delta with symbolIndex 999.
+      const corruptDelta: Delta = [11, 999, 68000000000, 10000, 0, clock.now()];
+      deliver({ type: 'deltas', items: [corruptDelta] });
+
+      // Seq must NOT advance past unusable event
+      expect(engine.currentSeq).toBe(10);
+      // Engine must recover via snapshot sync
+      expect(engine.currentState).toBe('syncing');
+    });
+
+    it('F07: rejects snapshot with mismatched feed ID', async () => {
+      let resolveSnapshot!: (snap: Snapshot) => void;
+      const snapshotPromise = new Promise<Snapshot>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+
+      let capturedError: Error | undefined;
+      const engine = new SyncEngine({
+        feedId: 'top100@100',
+        clock,
+        connectSocket: (onOpen, onMessage, onClose) => {
+          onSocketMessageCb = onMessage;
+          onSocketCloseCb = onClose;
+          const sock = createMockSocket();
+          queueMicrotask(onOpen);
+          return sock;
+        },
+        fetchSnapshot: () => snapshotPromise,
+        listeners: {
+          onError: (err) => {
+            capturedError = err;
+          },
+        },
+      });
+
+      engine.start();
+      await Promise.resolve();
+
+      deliver({
+        type: 'welcome',
+        feed: 'top100@100',
+        epoch: 'epoch-1',
+        headSeq: 10,
+        oldestSeq: 1,
+        heartbeatMs: 1000,
+        mode: 'snapshot',
+      });
+      expect(engine.currentState).toBe('syncing');
+
+      // Resolve snapshot with wrong feed ID
+      resolveSnapshot({
+        feed: 'wrong-feed@500',
+        epoch: 'epoch-1',
+        seq: 10,
+        symbols: initialUniverse.symbols,
+        quotes: initialUniverse.quotes,
+      });
+      await Promise.resolve();
+
+      // Must fail and reject mismatch
+      expect(engine.currentState).toBe('syncing');
     });
   });
 });

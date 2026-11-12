@@ -20,6 +20,7 @@ import {
   deltaSchema,
   encodeClientMessage,
   encodeServerMessage,
+  parseFeedId,
   quoteSchema,
   snapshotSchema,
 } from './index';
@@ -55,7 +56,7 @@ describe('quote and snapshot schemas', () => {
       open: 66000000000,
       high: 67500000000,
       low: 65500000000,
-      volume: 1234567890,
+      volume: '1234567890',
       trades: 4321,
       lastSeq: 4999,
       lastTs: 1710000000000,
@@ -70,6 +71,70 @@ describe('quote and snapshot schemas', () => {
       quotes: [quote],
     };
     expect(snapshotSchema.parse(snapshot)).toEqual(snapshot);
+  });
+
+  it('F07: rejects snapshot with misaligned symbols and quotes count', () => {
+    const quote: Quote = {
+      price: 67000000000,
+      open: 66000000000,
+      high: 67500000000,
+      low: 65500000000,
+      volume: '1234567890',
+      trades: 4321,
+      lastSeq: 4999,
+      lastTs: 1710000000000,
+    };
+    const badSnapshot = {
+      feed: 'top100@100',
+      epoch: 'epoch-1',
+      seq: 5000,
+      symbols: [
+        { symbol: 'BTC', name: 'Bitcoin', index: 0 },
+        { symbol: 'ETH', name: 'Ethereum', index: 1 },
+      ],
+      quotes: [quote], // only 1 quote for 2 symbols
+    };
+    expect(() => snapshotSchema.parse(badSnapshot)).toThrow(
+      /snapshot symbols and quotes count mismatch/i,
+    );
+  });
+
+  it('F07: rejects snapshot with non-contiguous symbol indices', () => {
+    const quote: Quote = {
+      price: 67000000000,
+      open: 66000000000,
+      high: 67500000000,
+      low: 65500000000,
+      volume: '0',
+      trades: 0,
+      lastSeq: 0,
+      lastTs: 0,
+    };
+    const badSnapshot = {
+      feed: 'top100@100',
+      epoch: 'epoch-1',
+      seq: 0,
+      symbols: [{ symbol: 'BTC', name: 'Bitcoin', index: 5 }], // index 5 at slot 0
+      quotes: [quote],
+    };
+    expect(() => snapshotSchema.parse(badSnapshot)).toThrow(
+      /snapshot symbol indices must be contiguous/i,
+    );
+  });
+
+  it('F11: validates canonical feed ID and rejects arbitrary IDs or rates', () => {
+    const parsed = parseFeedId('top100@500');
+    expect(parsed).toEqual({ universe: 'top100', rate: 500 });
+    expect(parseFeedId('top10k@1000')).toEqual({
+      universe: 'top10k',
+      rate: 1000,
+    });
+
+    expect(() => parseFeedId('unknown@100')).toThrow(/invalid feed id/i);
+    expect(() => parseFeedId('top100@-10')).toThrow(/invalid/i);
+    expect(() => parseFeedId('top100@0')).toThrow(/invalid/i);
+    expect(() => parseFeedId('top100@9999999')).toThrow(/invalid feed id/i);
+    expect(() => parseFeedId('malformed')).toThrow(/invalid/i);
   });
 });
 

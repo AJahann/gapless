@@ -417,5 +417,89 @@ describe('Server HTTP and WebSocket integration', () => {
       const closeEvent = await closePromise;
       expect(closeEvent.code).toBe(CLOSE_CODES.PROTOCOL_VIOLATION);
     });
+
+    it('F05: feed restart closes subscribed sockets with CLOSE_CODES.EPOCH_RESET', async () => {
+      app = await buildApp({
+        clientOrigins: ['http://localhost:3000'],
+        testControl: true,
+      });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+
+      const ws = await connectWs('/ws/feeds/top100@100');
+      ws.send(
+        encodeClientMessage({
+          type: 'hello',
+          v: PROTOCOL_VERSION,
+          feed: 'top100@100',
+        }),
+      );
+      await waitForNextMessage(ws); // welcome
+
+      const closePromise = waitForClose(ws);
+
+      // Trigger restart via test control route
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/feeds/top100@100/restart',
+      });
+      expect(res.statusCode).toBe(200);
+
+      // Connected socket must be closed with EPOCH_RESET
+      const closeEvent = await closePromise;
+      expect(closeEvent.code).toBe(CLOSE_CODES.EPOCH_RESET);
+    });
+
+    it('F11: rejects hello with mismatched feed ID against URL', async () => {
+      app = await buildApp({ clientOrigins: ['http://localhost:3000'] });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+
+      const ws = await connectWs('/ws/feeds/top100@100');
+      const closePromise = waitForClose(ws);
+
+      // Send hello with mismatching feed
+      ws.send(
+        encodeClientMessage({
+          type: 'hello',
+          v: PROTOCOL_VERSION,
+          feed: 'top100@500',
+        }),
+      );
+
+      const closeEvent = await closePromise;
+      expect(closeEvent.code).toBe(CLOSE_CODES.PROTOCOL_VIOLATION);
+    });
+
+    it('F11: rejects message exceeding 4 KiB with PROTOCOL_VIOLATION', async () => {
+      app = await buildApp({ clientOrigins: ['http://localhost:3000'] });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+
+      const ws = await connectWs('/ws/feeds/top100@100');
+      const closePromise = waitForClose(ws);
+
+      // 5 KiB message
+      const hugeData = 'x'.repeat(5120);
+      ws.send(hugeData);
+
+      const closeEvent = await closePromise;
+      expect([
+        CLOSE_CODES.PROTOCOL_VIOLATION,
+        1009, // WS standard message too big
+      ]).toContain(closeEvent.code);
+    });
+
+    it('F02/F11: rejects invalid feed ID format on HTTP and WS', async () => {
+      app = await buildApp({ clientOrigins: ['http://localhost:3000'] });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+
+      const snapRes = await app.inject({
+        method: 'GET',
+        url: '/api/feeds/invalid-feed/snapshot',
+      });
+      expect(snapRes.statusCode).toBe(400);
+
+      const ws = await connectWs('/ws/feeds/invalid-feed');
+      const closeEvent = await waitForClose(ws);
+      expect(closeEvent.code).toBe(CLOSE_CODES.PROTOCOL_VIOLATION);
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   generateSyntheticUniverse,
 } from '@gapless/engine';
 import type { Delta, Quote, Snapshot, SymbolInfo } from '@gapless/protocol';
+import { parseFeedId } from '@gapless/protocol';
 import { MarketGenerator } from './generator';
 
 export interface FeedOptions {
@@ -17,6 +18,7 @@ export interface FeedOptions {
 }
 
 export type DeltaListener = (deltas: Delta[]) => void;
+export type RestartListener = (newEpoch: string) => void;
 
 export class Feed {
   readonly id: string;
@@ -31,12 +33,19 @@ export class Feed {
   private quotes: Quote[] = [];
   private generator: MarketGenerator;
   private readonly listeners = new Set<DeltaListener>();
+  private readonly restartListeners = new Set<RestartListener>();
 
   constructor(options: FeedOptions) {
     this.id = options.id;
-    const [universeName = 'top100', rateStr = '100'] = options.id.split('@');
-    this.universeName = universeName;
-    this.rate = Math.max(1, Number.parseInt(rateStr, 10) || 100);
+    try {
+      const parsed = parseFeedId(options.id);
+      this.universeName = parsed.universe;
+      this.rate = parsed.rate;
+    } catch (_err) {
+      const [universeName = 'top100', rateStr = '100'] = options.id.split('@');
+      this.universeName = universeName;
+      this.rate = Math.max(1, Number.parseInt(rateStr, 10) || 100);
+    }
 
     const windowSec = options.replayWindowSec ?? 30;
     const maxEntries = options.replayMaxEntries ?? 100000;
@@ -103,6 +112,13 @@ export class Feed {
     this.generator.unpause();
   }
 
+  onRestart(listener: RestartListener): () => void {
+    this.restartListeners.add(listener);
+    return () => {
+      this.restartListeners.delete(listener);
+    };
+  }
+
   /**
    * Restarts the feed with a fresh epoch, resetting sequence numbers.
    * Spec: protocol.md and testing.md.
@@ -123,6 +139,12 @@ export class Feed {
     });
 
     this.generator.start();
+
+    // Signal epoch reset to connected sockets (F05)
+    for (const listener of this.restartListeners) {
+      listener(this._epoch);
+    }
+
     return this._epoch;
   }
 

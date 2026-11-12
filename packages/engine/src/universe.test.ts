@@ -23,7 +23,7 @@ describe('universe and reducer', () => {
     expect(quotes).toHaveLength(100);
     expect(quotes[0]?.price).toBe(67450000000);
     expect(quotes[0]?.open).toBe(67450000000);
-    expect(quotes[0]?.volume).toBe(0);
+    expect(quotes[0]?.volume).toBe('0');
     expect(quotes[0]?.trades).toBe(0);
   });
 
@@ -46,7 +46,7 @@ describe('universe and reducer', () => {
     expect(q1.open).toBe(100_000_000);
     expect(q1.high).toBe(105_000_000);
     expect(q1.low).toBe(100_000_000);
-    expect(q1.volume).toBe(105_000_000 * 20_000);
+    expect(q1.volume).toBe((105_000_000n * 20_000n).toString());
     expect(q1.trades).toBe(1);
     expect(q1.lastSeq).toBe(1);
     expect(q1.lastTs).toBe(1710000000000);
@@ -59,9 +59,23 @@ describe('universe and reducer', () => {
     expect(q2.open).toBe(100_000_000);
     expect(q2.high).toBe(105_000_000);
     expect(q2.low).toBe(95_000_000);
-    expect(q2.volume).toBe(105_000_000 * 20_000 + 95_000_000 * 10_000);
+    expect(q2.volume).toBe(
+      (105_000_000n * 20_000n + 95_000_000n * 10_000n).toString(),
+    );
     expect(q2.trades).toBe(2);
     expect(q2.lastSeq).toBe(2);
+  });
+
+  it('F08: accumulates volume losslessly without IEEE-754 precision rounding', () => {
+    const quote = createInitialQuote(67450.0);
+    const delta: Delta = [1, 0, 67450000001, 49999, 0, 1710000000000];
+    const q1 = applyDelta(quote, delta);
+    const q2 = applyDelta(q1, [2, 0, 67450000001, 49999, 0, 1710000001000]);
+    const q3 = applyDelta(q2, [3, 0, 67450000001, 49999, 0, 1710000002000]);
+
+    // In JS float: 67450000001 * 49999 * 3 = 10117297650149996 (loss of 1)
+    // Lossless BigInt string: 10117297650149997
+    expect(q3.volume).toBe('10117297650149997');
   });
 
   it('computes canonical digest deterministically', () => {

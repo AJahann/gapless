@@ -1,6 +1,6 @@
 import cors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
-import { PROTOCOL_VERSION } from '@gapless/protocol';
+import { PROTOCOL_VERSION, parseFeedId } from '@gapless/protocol';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { FeedRegistry } from './feed/registry';
 import { handleFeedConnection } from './ws/handler';
@@ -29,7 +29,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const testControl = options.testControl ?? false;
 
   await app.register(cors, { origin: options.clientOrigins });
-  await app.register(fastifyWebsocket);
+  await app.register(fastifyWebsocket, {
+    options: {
+      maxPayload: 4096,
+    },
+  });
 
   // Health
   app.get('/api/health', (_request, reply) =>
@@ -45,8 +49,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get<{ Params: { id: string } }>(
     '/api/feeds/:id/snapshot',
     (request, reply) => {
+      try {
+        parseFeedId(request.params.id);
+      } catch (_err) {
+        return reply.status(400).send({ error: 'Invalid feed ID' });
+      }
       const feed = registry.getFeed(request.params.id);
-      reply.send(feed.getSnapshot());
+      return reply.send(feed.getSnapshot());
     },
   );
 
@@ -55,35 +64,55 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { id: string } }>(
       '/api/feeds/:id/digest',
       (request, reply) => {
+        try {
+          parseFeedId(request.params.id);
+        } catch (_err) {
+          return reply.status(400).send({ error: 'Invalid feed ID' });
+        }
         const feed = registry.getFeed(request.params.id);
-        reply.send(feed.getDigest());
+        return reply.send(feed.getDigest());
       },
     );
 
     app.post<{ Params: { id: string } }>(
       '/api/feeds/:id/pause',
       (request, reply) => {
+        try {
+          parseFeedId(request.params.id);
+        } catch (_err) {
+          return reply.status(400).send({ error: 'Invalid feed ID' });
+        }
         const feed = registry.getFeed(request.params.id);
         feed.pause();
-        reply.send({ headSeq: feed.headSeq });
+        return reply.send({ headSeq: feed.headSeq });
       },
     );
 
     app.post<{ Params: { id: string } }>(
       '/api/feeds/:id/unpause',
       (request, reply) => {
+        try {
+          parseFeedId(request.params.id);
+        } catch (_err) {
+          return reply.status(400).send({ error: 'Invalid feed ID' });
+        }
         const feed = registry.getFeed(request.params.id);
         feed.unpause();
-        reply.send({ headSeq: feed.headSeq });
+        return reply.send({ headSeq: feed.headSeq });
       },
     );
 
     app.post<{ Params: { id: string } }>(
       '/api/feeds/:id/restart',
       (request, reply) => {
+        try {
+          parseFeedId(request.params.id);
+        } catch (_err) {
+          return reply.status(400).send({ error: 'Invalid feed ID' });
+        }
         const feed = registry.getFeed(request.params.id);
         const epoch = feed.restart();
-        reply.send({ epoch });
+        return reply.send({ epoch });
       },
     );
   }

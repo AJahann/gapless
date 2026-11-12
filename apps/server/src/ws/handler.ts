@@ -8,6 +8,7 @@ import {
   type ReplayUnavailableMessage,
   type WelcomeMessage,
   encodeServerMessage,
+  parseFeedId,
   safeDecodeClientMessage,
 } from '@gapless/protocol';
 import type { FastifyRequest } from 'fastify';
@@ -39,6 +40,16 @@ export function handleFeedConnection(
   options: WebSocketHandlerOptions,
 ): void {
   const feedId = request.params.id;
+  try {
+    parseFeedId(feedId);
+  } catch (_err) {
+    socket.close(
+      CLOSE_CODES.PROTOCOL_VIOLATION,
+      'Invalid feed ID syntax or parameters',
+    );
+    return;
+  }
+
   const { origin } = request.headers;
 
   // 1. Origin verification
@@ -60,6 +71,7 @@ export function handleFeedConnection(
   let isReplaying = false;
   let replayingQueue: Delta[] = [];
   let unsubscribeFeed: (() => void) | null = null;
+  let unsubscribeRestart: (() => void) | null = null;
   let heartbeatTimer: NodeJS.Timeout | null = null;
 
   // Rate-limiting tracking (token bucket or 1s sliding window)
@@ -170,6 +182,15 @@ export function handleFeedConnection(
       return;
     }
 
+    if (message.feed !== feedId) {
+      cleanup();
+      socket.close(
+        CLOSE_CODES.PROTOCOL_VIOLATION,
+        'Feed mismatch between URL and hello body',
+      );
+      return;
+    }
+
     isHandshaked = true;
     clearTimeout(helloTimeout);
 
@@ -178,6 +199,12 @@ export function handleFeedConnection(
 
     // Subscribe to feed deltas immediately
     unsubscribeFeed = feed.subscribe(handleLiveDeltas);
+
+    // Signal epoch reset to client if feed restarts during connection (F05)
+    unsubscribeRestart = feed.onRestart((newEpoch) => {
+      cleanup();
+      socket.close(CLOSE_CODES.EPOCH_RESET, `Feed epoch reset to ${newEpoch}`);
+    });
 
     const { resume } = message;
     let mode: 'snapshot' | 'replay' | 'live' = 'snapshot';
@@ -292,6 +319,10 @@ export function handleFeedConnection(
       unsubscribeFeed();
       unsubscribeFeed = null;
     }
+    if (unsubscribeRestart) {
+      unsubscribeRestart();
+      unsubscribeRestart = null;
+    }
     if (feed) {
       options.registry.onSubscriberLeft(feedId);
       feed = null;
@@ -299,10 +330,14 @@ export function handleFeedConnection(
   }
 
   socket.on('message', (raw) => {
-    const rawStr = raw.toString();
+    // Check message byte size limit (4 KiB) before string allocation/decoding (F11)
+    const rawLen = Buffer.isBuffer(raw)
+      ? raw.length
+      : Array.isArray(raw)
+        ? raw.reduce((acc, b) => acc + b.length, 0)
+        : Buffer.byteLength(String(raw));
 
-    // Check message size limit (4 KiB)
-    if (rawStr.length > MAX_MESSAGE_SIZE) {
+    if (rawLen > MAX_MESSAGE_SIZE) {
       cleanup();
       socket.close(
         CLOSE_CODES.PROTOCOL_VIOLATION,
@@ -310,6 +345,8 @@ export function handleFeedConnection(
       );
       return;
     }
+
+    const rawStr = raw.toString();
 
     // Rate limiting: 20 msgs / sec
     const nowSec = Math.floor(Date.now() / 1000);

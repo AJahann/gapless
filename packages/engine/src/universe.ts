@@ -130,7 +130,7 @@ export function createInitialQuote(basePriceUsd: number): Quote {
     open: fixedPrice,
     high: fixedPrice,
     low: fixedPrice,
-    volume: 0,
+    volume: '0',
     trades: 0,
     lastSeq: 0,
     lastTs: 0,
@@ -189,14 +189,15 @@ export function generateSyntheticUniverse(
  */
 export function applyDelta(quote: Quote, delta: Delta): Quote {
   const [seq, _symbolIndex, price, size, _side, ts] = delta;
-  const volumeDelta = price * size;
+  const volumeDelta = BigInt(price) * BigInt(size);
+  const newVolume = (BigInt(quote.volume) + volumeDelta).toString();
 
   return {
     price,
     open: quote.open,
     high: price > quote.high ? price : quote.high,
     low: price < quote.low ? price : quote.low,
-    volume: quote.volume + volumeDelta,
+    volume: newVolume,
     trades: quote.trades + 1,
     lastSeq: seq,
     lastTs: ts,

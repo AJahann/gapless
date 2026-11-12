@@ -12,6 +12,7 @@ import {
   type Snapshot,
   type SymbolInfo,
   encodeClientMessage,
+  safeDecodeSnapshot,
 } from '@gapless/protocol';
 
 export type MainToWorkerMessage =
@@ -183,7 +184,14 @@ function initEngine(msg: Extract<MainToWorkerMessage, { type: 'init' }>): void {
       if (!res.ok) {
         throw new Error(`Snapshot fetch failed with status ${res.status}`);
       }
-      return (await res.json()) as Snapshot;
+      const json = await res.json();
+      const decoded = safeDecodeSnapshot(json);
+      if (!decoded.success) {
+        throw new Error(
+          `Snapshot semantic validation failed: ${decoded.error.message}`,
+        );
+      }
+      return decoded.data;
     },
     listeners: {
       onStateChange: () => {

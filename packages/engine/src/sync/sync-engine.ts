@@ -1,4 +1,5 @@
 import {
+  CLOSE_CODES,
   type ClientMessage,
   type Delta,
   type HelloMessage,
@@ -359,8 +360,9 @@ export class SyncEngine {
     }
 
     if (seq === this.lastSeq + 1) {
-      this.applySingleDelta(delta);
-      this.drainPending();
+      if (this.applySingleDelta(delta)) {
+        this.drainPending();
+      }
       return;
     }
 
@@ -386,14 +388,18 @@ export class SyncEngine {
     }
   }
 
-  private applySingleDelta(delta: Delta): void {
+  private applySingleDelta(delta: Delta): boolean {
     const symIdx = delta[1];
     const prevQuote = this.quotes[symIdx];
-    if (prevQuote) {
-      const updated = applyDelta(prevQuote, delta);
-      this.quotes[symIdx] = updated;
-      this.listeners.onDeltaApplied?.(delta, updated);
+    if (!prevQuote) {
+      // Invalid symbol index: cannot advance seq past unusable delta (F07)
+      this.startSnapshotSync();
+      return false;
     }
+
+    const updated = applyDelta(prevQuote, delta);
+    this.quotes[symIdx] = updated;
+    this.listeners.onDeltaApplied?.(delta, updated);
 
     this.lastSeq = delta[0];
     if (this.state === 'replaying') {
@@ -402,13 +408,16 @@ export class SyncEngine {
         this.setState('live');
       }
     }
+    return true;
   }
 
   private drainPending(): void {
     while (this.pending.has(this.lastSeq + 1)) {
       const nextDelta = this.pending.get(this.lastSeq + 1)!;
       this.pending.delete(this.lastSeq + 1);
-      this.applySingleDelta(nextDelta);
+      if (!this.applySingleDelta(nextDelta)) {
+        break;
+      }
     }
 
     if (this.pending.size === 0) {
@@ -606,6 +615,15 @@ export class SyncEngine {
   private onSnapshotFetched(snapshot: Snapshot): void {
     if (this.state === 'offline' || this.state === 'idle') return;
 
+    if (snapshot.feed !== this.feedId) {
+      this.handleSnapshotFailure(
+        new Error(
+          `Snapshot feed mismatch: expected ${this.feedId}, received ${snapshot.feed}`,
+        ),
+      );
+      return;
+    }
+
     if (snapshot.epoch !== this.epoch) {
       this.epoch = snapshot.epoch;
       this.lastSeq = 0;
@@ -669,11 +687,19 @@ export class SyncEngine {
     }
   }
 
-  private onSocketClose(_code?: number, _gen?: number): void {
+  private onSocketClose(code?: number, _gen?: number): void {
     this.clearAllTimers();
     this.socket = null;
 
     if (this.state === 'offline' || this.state === 'idle') return;
+
+    if (code === CLOSE_CODES.EPOCH_RESET) {
+      // Immediate reconnect on epoch reset (F05)
+      this.reconnectAttempts = 0;
+      this.setState('connecting');
+      this.openSocket();
+      return;
+    }
 
     // Schedule backoff reconnect
     const delay = computeFullJitterBackoff(this.reconnectAttempts, {
