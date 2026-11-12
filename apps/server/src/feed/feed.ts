@@ -201,9 +201,15 @@ export class Feed {
       return { status: 'expired' };
     }
 
+    // Direct indexed access starting at (afterSeq + 1) - oldestSeq (F20)
+    // Avoids scanning the full ring buffer in O(N)
+    const startIndex = Math.max(0, afterSeq + 1 - this.oldestSeq);
+    const ringLen = this.replayRing.length;
     const deltas: Delta[] = [];
-    for (const delta of this.replayRing) {
-      if (delta[0] > afterSeq && delta[0] <= this._headSeq) {
+
+    for (let i = startIndex; i < ringLen; i += 1) {
+      const delta = this.replayRing.get(i);
+      if (delta && delta[0] <= this._headSeq) {
         deltas.push(delta);
       }
     }

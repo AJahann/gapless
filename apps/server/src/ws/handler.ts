@@ -86,23 +86,48 @@ export function handleFeedConnection(
     }
   }, HELLO_TIMEOUT_MS);
 
-  function sendFrame(payload: string): void {
+  const pendingDelayTimers = new Set<NodeJS.Timeout>();
+  let queuedBytes = 0;
+
+  function sendControlFrame(payload: string): void {
     if (socket.readyState !== socket.OPEN) return;
 
-    // Check slow consumer
     if (socket.bufferedAmount > slowWatermark) {
       cleanup();
       socket.close(CLOSE_CODES.SLOW_CONSUMER, 'Slow consumer');
       return;
     }
+    socket.send(payload);
+  }
 
-    const delay = chaos.delayDurationMs;
+  function sendDataFrame(payload: string): void {
+    if (socket.readyState !== socket.OPEN) return;
+
+    if (socket.bufferedAmount + queuedBytes > slowWatermark) {
+      cleanup();
+      socket.close(CLOSE_CODES.SLOW_CONSUMER, 'Slow consumer');
+      return;
+    }
+
+    const delay = Math.min(5000, chaos.delayDurationMs);
     if (delay > 0) {
-      setTimeout(() => {
-        if (socket.readyState === socket.OPEN) {
-          socket.send(payload);
+      const payloadBytes = Buffer.byteLength(payload);
+      queuedBytes += payloadBytes;
+
+      const timer = setTimeout(() => {
+        pendingDelayTimers.delete(timer);
+        queuedBytes = Math.max(0, queuedBytes - payloadBytes);
+
+        if (socket.readyState !== socket.OPEN) return;
+        if (socket.bufferedAmount > slowWatermark) {
+          cleanup();
+          socket.close(CLOSE_CODES.SLOW_CONSUMER, 'Slow consumer');
+          return;
         }
+        socket.send(payload);
       }, delay);
+
+      pendingDelayTimers.add(timer);
     } else {
       socket.send(payload);
     }
@@ -120,7 +145,7 @@ export function handleFeedConnection(
         type: 'deltas',
         items: chunk,
       };
-      sendFrame(encodeServerMessage(frame));
+      sendDataFrame(encodeServerMessage(frame));
     }
   }
 
@@ -134,7 +159,7 @@ export function handleFeedConnection(
         type: 'heartbeat',
         headSeq: feed.headSeq,
       };
-      sendFrame(encodeServerMessage(hb));
+      sendControlFrame(encodeServerMessage(hb));
     }, heartbeatMs);
   }
 
@@ -232,7 +257,7 @@ export function handleFeedConnection(
       heartbeatMs,
       mode,
     };
-    sendFrame(encodeServerMessage(welcome));
+    sendControlFrame(encodeServerMessage(welcome));
 
     if (mode === 'replay' && resume) {
       performReplay(resume.seq);
@@ -258,7 +283,7 @@ export function handleFeedConnection(
         headSeq: feed.headSeq,
         oldestSeq: feed.oldestSeq,
       };
-      sendFrame(encodeServerMessage(resp));
+      sendControlFrame(encodeServerMessage(resp));
       return;
     }
 
@@ -270,7 +295,7 @@ export function handleFeedConnection(
         headSeq: feed.headSeq,
         oldestSeq: feed.oldestSeq,
       };
-      sendFrame(encodeServerMessage(resp));
+      sendControlFrame(encodeServerMessage(resp));
       return;
     }
 
@@ -282,7 +307,7 @@ export function handleFeedConnection(
         headSeq: feed.headSeq,
         oldestSeq: feed.oldestSeq,
       };
-      sendFrame(encodeServerMessage(resp));
+      sendControlFrame(encodeServerMessage(resp));
       return;
     }
 
@@ -311,6 +336,11 @@ export function handleFeedConnection(
 
   function cleanup(): void {
     clearTimeout(helloTimeout);
+    for (const timer of pendingDelayTimers) {
+      clearTimeout(timer);
+    }
+    pendingDelayTimers.clear();
+    queuedBytes = 0;
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;

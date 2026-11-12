@@ -4,6 +4,7 @@ export interface FeedRegistryOptions {
   replayWindowSec?: number;
   replayMaxEntries?: number;
   feedIdleTtlSec?: number;
+  maxActiveFeeds?: number;
 }
 
 export class FeedRegistry {
@@ -12,29 +13,44 @@ export class FeedRegistry {
   private readonly replayWindowSec: number;
   private readonly replayMaxEntries: number;
   private readonly feedIdleTtlSec: number;
+  private readonly maxActiveFeeds: number;
 
   constructor(options?: FeedRegistryOptions) {
     this.replayWindowSec = options?.replayWindowSec ?? 30;
     this.replayMaxEntries = options?.replayMaxEntries ?? 100000;
     this.feedIdleTtlSec = options?.feedIdleTtlSec ?? 300;
+    this.maxActiveFeeds = options?.maxActiveFeeds ?? 100;
   }
 
   getFeed(id: string): Feed {
     let feed = this.feeds.get(id);
     if (!feed) {
+      if (this.feeds.size >= this.maxActiveFeeds) {
+        // Evict oldest idle feed to protect server resources (F02)
+        let evicted = false;
+        const oldestIdleEntry = this.idleTimers.entries().next().value;
+        if (oldestIdleEntry) {
+          const [idleId, timer] = oldestIdleEntry;
+          clearTimeout(timer);
+          this.idleTimers.delete(idleId);
+          const f = this.feeds.get(idleId);
+          f?.stop();
+          this.feeds.delete(idleId);
+          evicted = true;
+        }
+        if (!evicted) {
+          throw new Error('Maximum active feeds limit exceeded');
+        }
+      }
+
       feed = new Feed({
         id,
         replayWindowSec: this.replayWindowSec,
         replayMaxEntries: this.replayMaxEntries,
       });
       this.feeds.set(id, feed);
-    }
-
-    // Cancel idle timer if active
-    const timer = this.idleTimers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.idleTimers.delete(id);
+      // HTTP-only or fresh feed has 0 subscribers -> schedule idle expiry (F09)
+      this.scheduleIdleTimer(id);
     }
 
     return feed;
@@ -76,19 +92,22 @@ export class FeedRegistry {
     const feed = this.feeds.get(feedId);
     if (!feed || feed.subscriberCount > 0) return;
 
-    // Start idle countdown
-    if (!this.idleTimers.has(feedId)) {
-      const timer = setTimeout(() => {
-        this.idleTimers.delete(feedId);
-        const currentFeed = this.feeds.get(feedId);
-        if (currentFeed && currentFeed.subscriberCount === 0) {
-          currentFeed.stop();
-          this.feeds.delete(feedId);
-        }
-      }, this.feedIdleTtlSec * 1000);
+    this.scheduleIdleTimer(feedId);
+  }
 
-      this.idleTimers.set(feedId, timer);
-    }
+  private scheduleIdleTimer(feedId: string): void {
+    if (this.idleTimers.has(feedId)) return;
+
+    const timer = setTimeout(() => {
+      this.idleTimers.delete(feedId);
+      const currentFeed = this.feeds.get(feedId);
+      if (currentFeed && currentFeed.subscriberCount === 0) {
+        currentFeed.stop();
+        this.feeds.delete(feedId);
+      }
+    }, this.feedIdleTtlSec * 1000);
+
+    this.idleTimers.set(feedId, timer);
   }
 
   closeAll(): void {
