@@ -21,15 +21,30 @@ function DashboardContent() {
   const fps = useFps();
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const u = params.get('universe');
-      const r = params.get('rate');
-      const m = params.get('mode');
-      if (u) setUniverse(u);
-      if (r) setRate(Number(r) || 100);
-      if (m === 'worker' || m === 'main') setMode(m);
-    }
+    const parseUrlParams = () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const u = params.get('universe');
+        const r = params.get('rate');
+        const m = params.get('mode');
+        if (u === 'top100' || u === 'top10k') setUniverse(u);
+        if (r) {
+          const rateNum = Number.parseInt(r, 10);
+          if (
+            Number.isSafeInteger(rateNum) &&
+            rateNum >= 1 &&
+            rateNum <= 10000
+          ) {
+            setRate(rateNum);
+          }
+        }
+        if (m === 'worker' || m === 'main') setMode(m);
+      }
+    };
+
+    parseUrlParams();
+    window.addEventListener('popstate', parseUrlParams);
+    return () => window.removeEventListener('popstate', parseUrlParams);
   }, []);
 
   const handleRateChange = (newRate: number) => {

@@ -78,6 +78,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            aria-label='Drop percentage'
             data-testid='chaos-drop'
             min={0}
             max={50}
@@ -98,6 +99,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            aria-label='Duplicate percentage'
             data-testid='chaos-duplicate'
             min={0}
             max={30}
@@ -118,6 +120,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            aria-label='Reorder percentage'
             data-testid='chaos-reorder'
             min={0}
             max={30}
@@ -138,6 +141,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           </div>
           <input
             type='range'
+            aria-label='Jitter milliseconds'
             data-testid='chaos-jitter'
             min={0}
             max={300}
@@ -156,6 +160,7 @@ export function ChaosPanel({ client }: ChaosPanelProps) {
           <label className='flex cursor-pointer items-center gap-2'>
             <input
               type='checkbox'
+              aria-label='Silent socket'
               data-testid='chaos-silent'
               checked={silent}
               onChange={(e) => {

@@ -116,4 +116,104 @@ describe(MainThreadFeedClient, () => {
     expect(client.getState()).toBe('connecting');
     client.stop();
   });
+
+  it('F13: clears epoch-owned trade tapes and sparklines on epoch change', () => {
+    const client = new MainThreadFeedClient({ feedId: 'top100@100' });
+    const clientAny = client as unknown as {
+      onSnapshotApplied: (snapshot: Snapshot) => void;
+      onDeltaApplied: (delta: Delta) => void;
+    };
+
+    const snap1: Snapshot = {
+      feed: 'top100@100',
+      epoch: 'epoch-1',
+      seq: 10,
+      symbols: [{ symbol: 'BTC', name: 'Bitcoin', index: 0 }],
+      quotes: [
+        {
+          price: 67000000000,
+          open: 67000000000,
+          high: 67000000000,
+          low: 67000000000,
+          volume: '0',
+          trades: 0,
+          lastSeq: 10,
+          lastTs: 0,
+        },
+      ],
+    };
+
+    clientAny.onSnapshotApplied(snap1);
+
+    // Apply a trade delta in epoch-1
+    clientAny.onDeltaApplied([11, 0, 67500000000, 10000, 0, 1710000000000]);
+    expect(client.getTrades(0)).toHaveLength(1);
+
+    // Now snap2 arrives with a new epoch (epoch-2)
+    const snap2: Snapshot = {
+      feed: 'top100@100',
+      epoch: 'epoch-2',
+      seq: 0,
+      symbols: [{ symbol: 'BTC', name: 'Bitcoin', index: 0 }],
+      quotes: [
+        {
+          price: 68000000000,
+          open: 68000000000,
+          high: 68000000000,
+          low: 68000000000,
+          volume: '0',
+          trades: 0,
+          lastSeq: 0,
+          lastTs: 0,
+        },
+      ],
+    };
+
+    clientAny.onSnapshotApplied(snap2);
+
+    // Trade tape from old epoch must be wiped clean!
+    expect(client.getTrades(0)).toHaveLength(0);
+  });
+
+  it('F14: sparkline sampler notifies symbol subscribers for cold symbols', async () => {
+    const client = new MainThreadFeedClient({ feedId: 'top100@100' });
+    const clientAny = client as unknown as {
+      onSnapshotApplied: (snapshot: Snapshot) => void;
+    };
+
+    clientAny.onSnapshotApplied({
+      feed: 'top100@100',
+      epoch: 'epoch-1',
+      seq: 10,
+      symbols: [{ symbol: 'BTC', name: 'Bitcoin', index: 0 }],
+      quotes: [
+        {
+          price: 67000000000,
+          open: 67000000000,
+          high: 67000000000,
+          low: 67000000000,
+          volume: '0',
+          trades: 0,
+          lastSeq: 10,
+          lastTs: 0,
+        },
+      ],
+    });
+
+    let btcNotificationCount = 0;
+    client.subscribeSymbol(0, () => {
+      btcNotificationCount += 1;
+    });
+
+    // Start client which starts 1Hz sparkline sampler
+    client.start();
+
+    // Wait 1.1s for sparkline timer to sample
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    expect(btcNotificationCount).toBeGreaterThanOrEqual(1);
+    expect(client.getSparkline(0).length).toBeGreaterThanOrEqual(1);
+
+    client.stop();
+  });
 });

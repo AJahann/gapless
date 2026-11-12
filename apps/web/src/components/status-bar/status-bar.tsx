@@ -1,7 +1,7 @@
 'use client';
 
 import type { SyncState } from '@gapless/engine';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FeedClient } from '../../feed/feed-client';
 import { useSyncState } from '../../state/market-store';
 
@@ -26,6 +26,14 @@ export function StatusBar({
   const [activeOutageTimer, setActiveOutageTimer] = useState<number | null>(
     null,
   );
+
+  useEffect(() => {
+    return () => {
+      if (activeOutageTimer !== null) {
+        window.clearTimeout(activeOutageTimer);
+      }
+    };
+  }, [activeOutageTimer]);
 
   const isCut = state === 'offline';
 
@@ -169,23 +177,26 @@ export function StatusBar({
         <button
           type='button'
           onClick={() => triggerOutagePreset(2)}
+          title='Cut 2s: illustrative short outage (recovers via replay if within sequence window)'
           className='cursor-pointer rounded border border-brand-border bg-brand-border-subtle px-2 py-1 text-xs text-brand-fg transition hover:bg-brand-card-hover'
         >
-          Cut 2s (replay)
+          Cut 2s (short)
         </button>
         <button
           type='button'
           onClick={() => triggerOutagePreset(15)}
+          title='Cut 15s: illustrative medium outage (recovers via replay if within sequence window)'
           className='cursor-pointer rounded border border-brand-border bg-brand-border-subtle px-2 py-1 text-xs text-brand-fg transition hover:bg-brand-card-hover'
         >
-          Cut 15s (replay)
+          Cut 15s (medium)
         </button>
         <button
           type='button'
           onClick={() => triggerOutagePreset(45)}
+          title='Cut 45s: illustrative long outage (typically exceeds window, refetches snapshot)'
           className='cursor-pointer rounded border border-brand-border bg-brand-border-subtle px-2 py-1 text-xs text-brand-fg transition hover:bg-brand-card-hover'
         >
-          Cut 45s (snapshot)
+          Cut 45s (long)
         </button>
       </div>
     </div>

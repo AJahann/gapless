@@ -24,7 +24,11 @@ export function MarketTable({
 }: MarketTableProps) {
   const symbols = useAllSymbols(client);
   const syncState = useSyncState(client);
-  const isStale = syncState === 'offline' || syncState === 'error';
+  const isStale =
+    syncState === 'offline' ||
+    syncState === 'error' ||
+    syncState === 'syncing' ||
+    syncState === 'replaying';
 
   return (
     <div className='overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-sm'>
@@ -33,8 +37,10 @@ export function MarketTable({
           Top 100 Assets ({symbols.length} live)
         </span>
         {isStale && (
-          <span className='rounded bg-rose-950/60 px-2 py-0.5 text-xs font-semibold text-brand-down border border-rose-900/50'>
-            STALE (Disconnected)
+          <span className='rounded border border-rose-900/50 bg-rose-950/60 px-2 py-0.5 text-xs font-semibold text-brand-down'>
+            {syncState === 'offline'
+              ? 'STALE (Disconnected)'
+              : 'STALE (Recovering)'}
           </span>
         )}
       </div>
@@ -45,9 +51,24 @@ export function MarketTable({
             <tr className='sticky top-0 z-10 border-b border-brand-border bg-brand-card text-[11px] font-semibold text-brand-muted'>
               <th className='px-4 py-2.5'>Asset</th>
               <th className='px-4 py-2.5 text-right'>Price</th>
-              <th className='px-4 py-2.5 text-right'>24h %</th>
-              <th className='px-4 py-2.5 text-right'>24h High</th>
-              <th className='px-4 py-2.5 text-right'>24h Low</th>
+              <th
+                className='px-4 py-2.5 text-right'
+                title='Percentage change relative to session opening baseline'
+              >
+                Session %
+              </th>
+              <th
+                className='px-4 py-2.5 text-right'
+                title='Highest price observed in current stream session'
+              >
+                Session High
+              </th>
+              <th
+                className='px-4 py-2.5 text-right'
+                title='Lowest price observed in current stream session'
+              >
+                Session Low
+              </th>
               <th className='px-4 py-2.5 text-right'>Volume</th>
               <th className='px-4 py-2.5 text-right'>Trades</th>
               <th className='px-4 py-2.5 text-center'>History (1Hz)</th>
@@ -111,8 +132,16 @@ const MarketTableRow = memo(function MarketTableRow({
 
   return (
     <tr
+      tabIndex={0}
+      aria-selected={isSelected}
       onClick={onSelect}
-      className={`cursor-pointer border-b border-brand-border-subtle transition hover:bg-brand-card-hover ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`cursor-pointer border-b border-brand-border-subtle transition hover:bg-brand-card-hover focus:outline-none focus:ring-1 focus:ring-brand-accent ${
         isSelected ? 'bg-brand-card-hover' : 'bg-transparent'
       }`}
     >
@@ -125,10 +154,12 @@ const MarketTableRow = memo(function MarketTableRow({
 
       <td className='px-4 py-2.5 text-right font-semibold tabular-nums text-brand-fg'>
         $
-        {priceUsd.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 4,
-        })}
+        {priceUsd < 0.01 && priceUsd > 0
+          ? priceUsd.toPrecision(4)
+          : priceUsd.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 4,
+            })}
       </td>
 
       <td

@@ -117,6 +117,10 @@ export class WorkerFeedClient implements FeedClient {
     if (patch.sparklines) {
       for (const [idx, s] of patch.sparklines) {
         this.sparklineArrays.set(idx, s);
+        const listeners = this.symbolListeners.get(idx);
+        if (listeners) {
+          for (const l of listeners) l();
+        }
       }
     }
   }

@@ -45,6 +45,7 @@ export interface WorkerPatchMessage {
 let engine: SyncEngine | null = null;
 let activeWs: WebSocket | null = null;
 let symbols: SymbolInfo[] = [];
+let currentEpoch = '';
 
 const tradeTapes = new Map<number, RingBuffer<Delta>>();
 const dirtyTrades = new Set<number>();
@@ -214,6 +215,15 @@ function initEngine(msg: Extract<MainToWorkerMessage, { type: 'init' }>): void {
         scheduleFlush();
       },
       onSnapshotApplied: (snapshot) => {
+        if (currentEpoch && currentEpoch !== snapshot.epoch) {
+          tradeTapes.clear();
+          dirtyTrades.clear();
+          sparklines.clear();
+          dirtySparklines.clear();
+          dirtyQuotes.clear();
+        }
+        currentEpoch = snapshot.epoch;
+
         const { symbols: snapSymbols, quotes: snapQuotes } = snapshot;
         symbols = snapSymbols;
         symbolsUpdated = true;

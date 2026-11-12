@@ -138,6 +138,8 @@ export function ConceptsGuide() {
               <button
                 type='button'
                 aria-label={concept.title}
+                aria-expanded={isOpen}
+                aria-controls={`concept-details-${concept.id}`}
                 onClick={() => toggle(concept.id)}
                 className='flex w-full items-start justify-between p-3.5 text-left focus:outline-none'
               >
@@ -163,7 +165,10 @@ export function ConceptsGuide() {
                 </div>
               </button>
 
-              <div className='px-3.5 pb-3.5'>
+              <div
+                id={`concept-details-${concept.id}`}
+                className='px-3.5 pb-3.5'
+              >
                 <p className='text-xs leading-relaxed text-brand-fg/80'>
                   {concept.description}
                 </p>

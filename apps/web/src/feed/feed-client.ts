@@ -60,6 +60,9 @@ export class MainThreadFeedClient implements FeedClient {
   private engine: SyncEngine;
   private activeWs: WebSocket | null = null;
   private symbols: SymbolInfo[] = [];
+  private quotes: Quote[] = [];
+  private currentEpoch = '';
+  private onVisibilityChange: (() => void) | null = null;
 
   // Trade tapes per symbol (RingBuffer of last 200 trades)
   private readonly tradeTapes = new Map<number, RingBuffer<Delta>>();
@@ -193,9 +196,26 @@ export class MainThreadFeedClient implements FeedClient {
     this.engine.start();
     this.startSparklineSampler();
     this.startTopMoversTimer();
+
+    if (typeof document !== 'undefined' && !this.onVisibilityChange) {
+      this.onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          if (this.engine.currentState === 'offline') return;
+          const { lastEventAt } = this.engine.currentMetrics;
+          if (Date.now() - lastEventAt > 3 * this.heartbeatMs) {
+            this.engine.restore();
+          }
+        }
+      };
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+    }
   }
 
   stop(): void {
+    if (this.onVisibilityChange && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      this.onVisibilityChange = null;
+    }
     this.stopSparklineSampler();
     this.stopTopMoversTimer();
     this.cancelCoalesce();
@@ -241,7 +261,7 @@ export class MainThreadFeedClient implements FeedClient {
   }
 
   getQuote(index: number): Quote | undefined {
-    return this.engine.currentQuotes[index];
+    return this.quotes[index] ?? this.engine.currentQuotes[index];
   }
 
   getTrades(index: number): Delta[] {
@@ -315,7 +335,17 @@ export class MainThreadFeedClient implements FeedClient {
   }
 
   private onSnapshotApplied(snapshot: Snapshot): void {
+    if (this.currentEpoch && this.currentEpoch !== snapshot.epoch) {
+      // Clear epoch-owned trade tapes and sparklines on epoch change (F13)
+      this.tradeTapes.clear();
+      this.tradeArrays.clear();
+      this.sparklines.clear();
+      this.sparklineArrays.clear();
+      this.dirtySymbols.clear();
+    }
+    this.currentEpoch = snapshot.epoch;
     this.symbols = snapshot.symbols;
+    this.quotes = snapshot.quotes.map((q) => ({ ...q }));
     for (let i = 0; i < snapshot.symbols.length; i += 1) {
       this.dirtySymbols.add(i);
     }
@@ -375,7 +405,8 @@ export class MainThreadFeedClient implements FeedClient {
     if (this.sparklineTimer) return;
     // 1 Hz cadence: sample latest quote price into 120-item ring
     this.sparklineTimer = setInterval(() => {
-      const quotes = this.engine.currentQuotes;
+      const quotes =
+        this.quotes.length > 0 ? this.quotes : this.engine.currentQuotes;
       for (let i = 0; i < quotes.length; i += 1) {
         const q = quotes[i];
         if (!q) continue;
@@ -387,6 +418,12 @@ export class MainThreadFeedClient implements FeedClient {
         }
         ring.push(q.price / 1000000); // USD float for sparklines
         this.sparklineArrays.set(i, ring.toArray());
+
+        // Notify symbol listeners for sparkline updates (F14)
+        const listeners = this.symbolListeners.get(i);
+        if (listeners) {
+          for (const l of listeners) l();
+        }
       }
     }, 1000);
   }
