@@ -1,4 +1,8 @@
-import type { SyncMetrics, SyncState } from '@gapless/engine';
+import {
+  type SyncMetrics,
+  type SyncState,
+  computeDigest,
+} from '@gapless/engine';
 import type { ChaosMessage, Delta, Quote, SymbolInfo } from '@gapless/protocol';
 import type { WorkerPatchMessage } from './engine.worker';
 import type { FeedClient, FeedClientOptions } from './feed-client';
@@ -203,6 +207,11 @@ export class WorkerFeedClient implements FeedClient {
     changePct: number;
   }[] {
     return this.topGainers;
+  }
+
+  getDigest(): string {
+    const validQuotes = this.quotes.filter((q): q is Quote => q !== undefined);
+    return computeDigest(validQuotes);
   }
 
   subscribeState(listener: (state: SyncState) => void): () => void {

@@ -49,6 +49,12 @@ test.describe('E2E Real-time recovery scenarios', () => {
       10,
     );
 
+    const seqCell = page.getByTestId('metric-seq');
+    const cutSeq = Number.parseInt(
+      (await seqCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
     // Click Cut Connection
     const cutBtn = page.getByRole('button', { name: /Cut Connection/i });
     await cutBtn.click();
@@ -57,8 +63,18 @@ test.describe('E2E Real-time recovery scenarios', () => {
     await expect(page.getByTestId('status-pill')).toHaveText('OFFLINE');
     await expect(page.locator('text=STALE (Disconnected)')).toBeVisible();
 
-    // Wait 1 second (replay window is configured to 2s in test env)
-    await page.waitForTimeout(1000);
+    // Poll until server has progressed within the replay window (active polling, zero sleep)
+    const serverUrl =
+      process.env.TARGET_URL && !process.env.TARGET_URL.includes(':3000')
+        ? process.env.TARGET_URL
+        : 'http://127.0.0.1:4000';
+    await expect(async () => {
+      const snapRes = await page.request.get(
+        `${serverUrl}/api/feeds/top100@100/snapshot`,
+      );
+      const snap = (await snapRes.json()) as { seq: number };
+      expect(snap.seq).toBeGreaterThanOrEqual(cutSeq + 20);
+    }).toPass({ timeout: 5000 });
 
     // Restore connection
     const restoreBtn = page.getByRole('button', {
@@ -101,12 +117,28 @@ test.describe('E2E Real-time recovery scenarios', () => {
       10,
     );
 
+    const seqCell = page.getByTestId('metric-seq');
+    const cutSeq = Number.parseInt(
+      (await seqCell.innerText()).replace(/,/g, ''),
+      10,
+    );
+
     // Cut connection
     await page.getByRole('button', { name: /Cut Connection/i }).click();
     await expect(page.getByTestId('status-pill')).toHaveText('OFFLINE');
 
-    // Wait 4s (exceeds REPLAY_WINDOW_SEC=2)
-    await page.waitForTimeout(4000);
+    // Poll until server has progressed beyond replay window (exceeds REPLAY_WINDOW_SEC=5 capacity)
+    const serverUrl =
+      process.env.TARGET_URL && !process.env.TARGET_URL.includes(':3000')
+        ? process.env.TARGET_URL
+        : 'http://127.0.0.1:4000';
+    await expect(async () => {
+      const snapRes = await page.request.get(
+        `${serverUrl}/api/feeds/top100@100/snapshot`,
+      );
+      const snap = (await snapRes.json()) as { seq: number };
+      expect(snap.seq).toBeGreaterThanOrEqual(cutSeq + 550);
+    }).toPass({ timeout: 10000 });
 
     // Restore connection
     await page.getByRole('button', { name: /Restore Connection/i }).click();
@@ -371,5 +403,111 @@ test.describe('E2E Real-time recovery scenarios', () => {
     await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
       timeout: 15000,
     });
+  });
+
+  test('Scenario 12: Pausing feed proves exact client/server digest convergence in both modes', async ({
+    page,
+    request,
+  }) => {
+    const serverUrl =
+      process.env.TARGET_URL && !process.env.TARGET_URL.includes(':3000')
+        ? process.env.TARGET_URL
+        : 'http://127.0.0.1:4000';
+
+    // 1. Test in main thread mode
+    await page.goto('/?universe=top100&rate=100&mode=main');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    // Pause the feed via test control
+    const pauseRes = await request.post(
+      `${serverUrl}/api/feeds/top100@100/pause`,
+    );
+    expect(pauseRes.ok()).toBeTruthy();
+    const { headSeq: pausedSeq } = (await pauseRes.json()) as {
+      headSeq: number;
+    };
+
+    // Get canonical server digest at paused position
+    const serverDigestRes = await request.get(
+      `${serverUrl}/api/feeds/top100@100/digest`,
+    );
+    expect(serverDigestRes.ok()).toBeTruthy();
+    const { digest: serverDigest } = (await serverDigestRes.json()) as {
+      digest: string;
+    };
+
+    // Wait until client catches up to paused head sequence
+    const seqCell = page.getByTestId('metric-seq');
+    await expect(async () => {
+      const clientSeq = Number.parseInt(
+        (await seqCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(clientSeq).toBe(pausedSeq);
+    }).toPass({ timeout: 10000 });
+
+    // Assert exact 64-bit digest equality in main mode
+    const clientState = await page.evaluate(() => {
+      const c = (
+        window as unknown as {
+          __gapless_client?: {
+            getDigest: () => string;
+            getMetrics: () => { lastSeq: number; epoch: string };
+          };
+        }
+      ).__gapless_client;
+      return {
+        digest: c?.getDigest(),
+        metrics: c?.getMetrics(),
+      };
+    });
+    expect(clientState.digest).toBe(serverDigest);
+
+    // Unpause feed
+    const unpauseRes = await request.post(
+      `${serverUrl}/api/feeds/top100@100/unpause`,
+    );
+    expect(unpauseRes.ok()).toBeTruthy();
+
+    // 2. Test in worker thread mode
+    await page.goto('/?universe=top100&rate=100&mode=worker');
+    await expect(page.getByTestId('status-pill')).toHaveText('LIVE', {
+      timeout: 15000,
+    });
+
+    const pauseWorkerRes = await request.post(
+      `${serverUrl}/api/feeds/top100@100/pause`,
+    );
+    expect(pauseWorkerRes.ok()).toBeTruthy();
+    const { headSeq: workerPausedSeq } = (await pauseWorkerRes.json()) as {
+      headSeq: number;
+    };
+
+    const workerServerDigestRes = await request.get(
+      `${serverUrl}/api/feeds/top100@100/digest`,
+    );
+    const { digest: workerServerDigest } =
+      (await workerServerDigestRes.json()) as { digest: string };
+
+    await expect(async () => {
+      const clientSeq = Number.parseInt(
+        (await seqCell.innerText()).replace(/,/g, ''),
+        10,
+      );
+      expect(clientSeq).toBeGreaterThanOrEqual(workerPausedSeq);
+    }).toPass({ timeout: 10000 });
+
+    const workerClientDigest = await page.evaluate(() => {
+      return (
+        window as unknown as {
+          __gapless_client?: { getDigest: () => string };
+        }
+      ).__gapless_client?.getDigest();
+    });
+    expect(workerClientDigest).toBe(workerServerDigest);
+
+    await request.post(`${serverUrl}/api/feeds/top100@100/unpause`);
   });
 });

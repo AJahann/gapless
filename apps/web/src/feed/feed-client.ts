@@ -5,6 +5,7 @@ import {
   type SyncSocket,
   type SyncState,
   TopK,
+  computeDigest,
 } from '@gapless/engine';
 import {
   type ChaosMessage,
@@ -36,6 +37,7 @@ export interface FeedClient {
     quote: Quote;
     changePct: number;
   }[];
+  getDigest: () => string;
 
   subscribeState: (listener: (state: SyncState) => void) => () => void;
   subscribeMetrics: (listener: (metrics: SyncMetrics) => void) => () => void;
@@ -282,6 +284,14 @@ export class MainThreadFeedClient implements FeedClient {
     return this.topGainersCache;
   }
 
+  getDigest(): string {
+    const quotes =
+      this.engine.currentQuotes.length > 0
+        ? this.engine.currentQuotes
+        : this.quotes;
+    return computeDigest(quotes);
+  }
+
   subscribeState(listener: (state: SyncState) => void): () => void {
     this.stateListeners.add(listener);
     return () => this.stateListeners.delete(listener);
@@ -319,6 +329,9 @@ export class MainThreadFeedClient implements FeedClient {
 
   private onDeltaApplied(delta: Delta): void {
     const symIdx = delta[1];
+    if (this.engine.currentQuotes[symIdx]) {
+      this.quotes[symIdx] = this.engine.currentQuotes[symIdx]!;
+    }
 
     // Append to tape ring (bounded 200 items)
     let tape = this.tradeTapes.get(symIdx);

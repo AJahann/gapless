@@ -66,6 +66,11 @@ function DashboardContent() {
   }, [feedId, mode]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (
+        window as unknown as { __gapless_client?: FeedClient }
+      ).__gapless_client = client;
+    }
     client.start();
     return () => {
       client.stop();

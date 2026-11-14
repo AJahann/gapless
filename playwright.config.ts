@@ -38,7 +38,7 @@ export default defineConfig({
             PORT: '4000',
             HOST: '127.0.0.1',
             CLIENT_ORIGIN: 'http://localhost:3000,http://127.0.0.1:3000',
-            REPLAY_WINDOW_SEC: '2',
+            REPLAY_WINDOW_SEC: '5',
             REPLAY_MAX_ENTRIES: '10000',
             TEST_CONTROL: 'true',
             CHAOS_ENABLED: 'true',
