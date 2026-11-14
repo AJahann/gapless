@@ -4,15 +4,15 @@ Short version of the design doc's section 3, with the numbers each claim must be
 checked against. Benchmarks live in `packages/engine/bench/` (`vitest bench`) and
 results are pasted into `docs/performance.md` — never estimated.
 
-| Structure                           | Where                      | Complexity               | Bound                                             |
-| ----------------------------------- | -------------------------- | ------------------------ | ------------------------------------------------- |
-| `Map<symbol, Quote>`                | server feed + client state | O(1) avg get/set         | 100 or 10,000 entries                             |
-| `RingBuffer<Delta>`                 | server replay              | O(1) push, O(1) seq→slot | `min(rate*REPLAY_WINDOW_SEC, REPLAY_MAX_ENTRIES)` |
-| `RingBuffer<number>` (Float32Array) | sparklines                 | O(1) overwrite           | 120 samples/symbol                                |
-| `RingBuffer<Trade>`                 | trade tape                 | O(1) append              | 200 prints/symbol                                 |
-| `Set<symbol>` dirty                 | rAF coalescer              | O(1) add, O(dirty) flush | ≤ universe size                                   |
-| `Map<seq, Delta>` pending           | reorder window             | O(1) insert/delete       | 256 entries or 100 ms                             |
-| min-heap size K                     | top gainers                | O(n log k) recompute     | K=10, 500 ms cadence                              |
+| Structure                           | Where                      | Complexity                                                   | Bound                                             |
+| ----------------------------------- | -------------------------- | ------------------------------------------------------------ | ------------------------------------------------- |
+| `Map<symbol, Quote>`                | server feed + client state | O(1) avg get/set                                             | 100 or 10,000 entries                             |
+| `RingBuffer<Delta>`                 | server replay              | O(1) push, O(1) direct ring index `afterSeq + 1 - oldestSeq` | `min(rate*REPLAY_WINDOW_SEC, REPLAY_MAX_ENTRIES)` |
+| `RingBuffer<number>` (Float32Array) | sparklines                 | O(1) overwrite                                               | 120 samples/symbol                                |
+| `RingBuffer<Trade>`                 | trade tape                 | O(1) append, array materialized on flush                     | 200 prints/symbol                                 |
+| `Set<symbol>` dirty                 | rAF coalescer              | O(1) add, O(dirty) flush                                     | ≤ universe size                                   |
+| `Map<seq, Delta>` pending           | reorder window             | O(1) insert/delete                                           | 256 entries or 100 ms                             |
+| min-heap size K                     | top gainers                | O(n log k) recompute via shared `computeTopMovers`           | K=5 or 10, 500 ms cadence                         |
 
 Rules of thumb that are _not_ negotiable without a measurement:
 

@@ -85,7 +85,7 @@ Delta = [seq, symbolIndex, price, size, side, ts]
 ```
 
 Close codes: `4000` slow_consumer, `4001` protocol_violation, `4002`
-unauthorized_origin, `4003` hello_timeout, `1001` server shutdown.
+unauthorized_origin, `4003` hello_timeout, `4004` epoch_reset, `1001` server shutdown.
 
 ## HTTP
 
@@ -109,7 +109,7 @@ Quote = {
   "price": 67123450000,          // fixed point 1e6
   "open": 66000000000,           // session open, base for change %
   "high": 67500000000, "low": 65500000000,
-  "volume": 1234567890,          // Σ price×size, fixed point 1e10
+  "volume": "12345678900000",    // Σ price×size, lossless string integer (1e10 USD scale)
   "trades": 4321, "lastSeq": 4999, "lastTs": 1763000000000
 }
 ```
