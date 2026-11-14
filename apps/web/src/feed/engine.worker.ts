@@ -40,12 +40,14 @@ export interface WorkerPatchMessage {
   topGainers: { symbol: SymbolInfo; quote: Quote; changePct: number }[];
   trades?: [number, Delta[]][];
   sparklines?: [number, number[]][];
+  receivedAt?: number;
 }
 
 let engine: SyncEngine | null = null;
 let activeWs: WebSocket | null = null;
 let symbols: SymbolInfo[] = [];
 let currentEpoch = '';
+let lastBatchReceivedAt: number | null = null;
 
 const tradeTapes = new Map<number, RingBuffer<Delta>>();
 const dirtyTrades = new Set<number>();
@@ -135,7 +137,9 @@ function scheduleFlush(): void {
       topGainers: topGainersCache,
       trades: tradesList,
       sparklines: sparklinesList,
+      receivedAt: lastBatchReceivedAt ?? undefined,
     };
+    lastBatchReceivedAt = null;
     symbolsUpdated = false;
 
     postMessage(patch);
@@ -156,7 +160,11 @@ function initEngine(msg: Extract<MainToWorkerMessage, { type: 'init' }>): void {
       activeWs = ws;
 
       ws.onopen = () => onOpen();
-      ws.onmessage = (event) => onMessage(event.data);
+      ws.onmessage = (event) => {
+        lastBatchReceivedAt =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        onMessage(event.data);
+      };
       ws.onclose = (event) => {
         if (activeWs === ws) {
           activeWs = null;

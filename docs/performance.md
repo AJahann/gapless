@@ -26,13 +26,11 @@ without those is not a result.
 
 ## Results
 
-> **Provenance Warning (Baseline `59612ac`)**: The latency (`p95 recv→paint`) and frame `Coalescing` columns in this historical baseline table were placeholder constants/estimates (12ms/18ms and assumed 60Hz division; see [TECH-LEAD-REVIEW.md](TECH-LEAD-REVIEW.md) F15). True physical receive-to-render paint timestamps and frame-flush measurements are pending remediation Phase R6.
-
-| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint [unverified] | Long tasks   | Heap Δ | Coalescing [unverified] |
-| --------- | ------------------------------------------------ | ------ | -------- | ------ | --------------------------- | ------------ | ------ | ----------------------- |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | N/A (unverified)            | 5 (max 93ms) | 0.0 MB | N/A (unverified)        |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | N/A (unverified)            | 2 (max 66ms) | 0.0 MB | N/A (unverified)        |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | N/A (unverified)            | 2 (max 62ms) | 0.0 MB | N/A (unverified)        |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | N/A (unverified)            | 2 (max 64ms) | 0.0 MB | N/A (unverified)        |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | main   | N/A (unverified)            | 8 (max 76ms) | 0.0 MB | N/A (unverified)        |
-| `59612ac` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 5000/s | top100   | worker | N/A (unverified)            | 6 (max 66ms) | 0.0 MB | N/A (unverified)        |
+<!-- BENCHMARK_RESULTS_START -->
+| Commit    | Hardware                                         | Rate   | Universe | Mode   | p95 recv→paint | Long tasks     | Heap Δ        | Coalescing |
+| --------- | ------------------------------------------------ | ------ | -------- | ------ | -------------- | -------------- | ------------- | ---------- |
+| `e4d5a76` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | main   | 244.9 ms       | 44 (max 202ms) | 0.0 MB        | 4.6x       |
+| `e4d5a76` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 100/s  | top100   | worker | 1127.7 ms      | 17 (max 226ms) | 0.0 MB (main) | 2.0x       |
+| `e4d5a76` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | main   | 276.5 ms       | 29 (max 321ms) | 0.0 MB        | 97.5x      |
+| `e4d5a76` | 13th Gen Intel(R) Core(TM) i7-13620H (win32 x64) | 1000/s | top100   | worker | 8442.9 ms      | 71 (max 258ms) | 0.0 MB (main) | 20.6x      |
+<!-- BENCHMARK_RESULTS_END -->

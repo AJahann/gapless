@@ -17,6 +17,44 @@ import {
   safeDecodeSnapshot,
 } from '@gapless/protocol';
 
+export interface FeedPerformanceMetrics {
+  renderedFrames: number;
+  p95RecvToPaintMs: number | null;
+  sampleCount: number;
+}
+
+export class LatencyTracker {
+  private samples: number[] = [];
+  private readonly maxSamples: number;
+
+  constructor(maxSamples = 1000) {
+    this.maxSamples = maxSamples;
+  }
+
+  record(latencyMs: number): void {
+    if (latencyMs < 0 || !Number.isFinite(latencyMs)) return;
+    if (this.samples.length >= this.maxSamples) {
+      this.samples.shift();
+    }
+    this.samples.push(latencyMs);
+  }
+
+  getP95(): number | null {
+    if (this.samples.length === 0) return null;
+    const sorted = [...this.samples].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+    return sorted[idx] ?? null;
+  }
+
+  get count(): number {
+    return this.samples.length;
+  }
+
+  reset(): void {
+    this.samples = [];
+  }
+}
+
 export interface FeedClient {
   start: () => void;
   stop: () => void;
@@ -38,6 +76,7 @@ export interface FeedClient {
     changePct: number;
   }[];
   getDigest: () => string;
+  getPerformanceMetrics: () => FeedPerformanceMetrics;
 
   subscribeState: (listener: (state: SyncState) => void) => () => void;
   subscribeMetrics: (listener: (metrics: SyncMetrics) => void) => () => void;
@@ -85,6 +124,11 @@ export class MainThreadFeedClient implements FeedClient {
     quote: Quote;
     changePct: number;
   }[] = [];
+
+  // Performance instrumentation
+  private readonly latencyTracker = new LatencyTracker();
+  private renderedFrames = 0;
+  private lastBatchReceivedAt: number | null = null;
 
   // Listeners
   private readonly stateListeners = new Set<(state: SyncState) => void>();
@@ -135,6 +179,8 @@ export class MainThreadFeedClient implements FeedClient {
           onOpen();
         };
         ws.onmessage = (event) => {
+          this.lastBatchReceivedAt =
+            typeof performance !== 'undefined' ? performance.now() : Date.now();
           onMessage(event.data);
         };
         ws.onclose = (event) => {
@@ -267,7 +313,17 @@ export class MainThreadFeedClient implements FeedClient {
   }
 
   getTrades(index: number): Delta[] {
-    return this.tradeArrays.get(index) ?? MainThreadFeedClient.EMPTY_TRADES;
+    let arr = this.tradeArrays.get(index);
+    if (!arr) {
+      const tape = this.tradeTapes.get(index);
+      if (tape) {
+        arr = tape.toArray();
+        this.tradeArrays.set(index, arr);
+      } else {
+        arr = MainThreadFeedClient.EMPTY_TRADES;
+      }
+    }
+    return arr;
   }
 
   getSparkline(index: number): number[] {
@@ -290,6 +346,14 @@ export class MainThreadFeedClient implements FeedClient {
         ? this.engine.currentQuotes
         : this.quotes;
     return computeDigest(quotes);
+  }
+
+  getPerformanceMetrics(): FeedPerformanceMetrics {
+    return {
+      renderedFrames: this.renderedFrames,
+      p95RecvToPaintMs: this.latencyTracker.getP95(),
+      sampleCount: this.latencyTracker.count,
+    };
   }
 
   subscribeState(listener: (state: SyncState) => void): () => void {
@@ -340,7 +404,6 @@ export class MainThreadFeedClient implements FeedClient {
       this.tradeTapes.set(symIdx, tape);
     }
     tape.push(delta);
-    this.tradeArrays.set(symIdx, tape.toArray());
 
     // Schedule rAF coalescing for dirty symbols
     this.dirtySymbols.add(symIdx);
@@ -383,7 +446,24 @@ export class MainThreadFeedClient implements FeedClient {
     this.rafId = null;
     if (this.dirtySymbols.size === 0) return;
 
+    this.renderedFrames += 1;
+    const batchRecvTime = this.lastBatchReceivedAt;
+    if (batchRecvTime !== null) {
+      this.lastBatchReceivedAt = null;
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          const paintProxy =
+            typeof performance !== 'undefined' ? performance.now() : Date.now();
+          this.latencyTracker.record(paintProxy - batchRecvTime);
+        });
+      }
+    }
+
     for (const symIdx of this.dirtySymbols) {
+      const tape = this.tradeTapes.get(symIdx);
+      if (tape) {
+        this.tradeArrays.set(symIdx, tape.toArray());
+      }
       const listeners = this.symbolListeners.get(symIdx);
       if (listeners) {
         for (const l of listeners) l();

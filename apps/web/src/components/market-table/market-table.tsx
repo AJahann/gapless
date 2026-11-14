@@ -1,7 +1,7 @@
 'use client';
 
 import type { SymbolInfo } from '@gapless/protocol';
-import { memo } from 'react';
+import { memo, useCallback, useState } from 'react';
 import type { FeedClient } from '../../feed/feed-client';
 import {
   useAllSymbols,
@@ -17,6 +17,52 @@ export interface MarketTableProps {
   onSelectSymbol: (index: number) => void;
 }
 
+const fmtPrice = new Intl.NumberFormat('en-US', {
+  style: 'decimal',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+const fmtUsd = new Intl.NumberFormat('en-US', {
+  style: 'decimal',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const fmtVolume = new Intl.NumberFormat('en-US', {
+  style: 'decimal',
+  maximumFractionDigits: 0,
+});
+
+const fmtInt = new Intl.NumberFormat('en-US');
+
+const ROW_HEIGHT = 44;
+const VIEWPORT_HEIGHT = 580;
+const OVERSCAN = 10;
+
+function checkIsStale(state: string): boolean {
+  return (
+    state === 'offline' ||
+    state === 'error' ||
+    state === 'syncing' ||
+    state === 'replaying'
+  );
+}
+
+function computeVirtualBounds(total: number, scrollTop: number) {
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(
+    total,
+    Math.ceil((scrollTop + VIEWPORT_HEIGHT) / ROW_HEIGHT) + OVERSCAN,
+  );
+  return {
+    startIndex,
+    endIndex,
+    paddingTop: startIndex * ROW_HEIGHT,
+    paddingBottom: (total - endIndex) * ROW_HEIGHT,
+  };
+}
+
 export function MarketTable({
   client,
   selectedSymbolIndex,
@@ -24,17 +70,46 @@ export function MarketTable({
 }: MarketTableProps) {
   const symbols = useAllSymbols(client);
   const syncState = useSyncState(client);
-  const isStale =
-    syncState === 'offline' ||
-    syncState === 'error' ||
-    syncState === 'syncing' ||
-    syncState === 'replaying';
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const isStale = checkIsStale(syncState);
+  const isVirtual = symbols.length > 500;
+
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (isVirtual) {
+        setScrollTop(e.currentTarget.scrollTop);
+      }
+    },
+    [isVirtual],
+  );
+
+  const handleSelect = useCallback(
+    (index: number) => {
+      onSelectSymbol(index);
+    },
+    [onSelectSymbol],
+  );
+
+  const bounds = isVirtual
+    ? computeVirtualBounds(symbols.length, scrollTop)
+    : {
+        startIndex: 0,
+        endIndex: symbols.length,
+        paddingTop: 0,
+        paddingBottom: 0,
+      };
+
+  const visibleSymbols = isVirtual
+    ? symbols.slice(bounds.startIndex, bounds.endIndex)
+    : symbols;
 
   return (
     <div className='overflow-hidden rounded-lg border border-brand-border bg-brand-card shadow-sm'>
       <div className='flex items-center justify-between border-b border-brand-border px-4 py-3'>
         <span className='text-xs font-bold uppercase tracking-wider text-brand-muted'>
-          Top 100 Assets ({symbols.length} live)
+          Top {symbols.length > 500 ? '10k' : '100'} Assets ({symbols.length}{' '}
+          live)
         </span>
         {isStale && (
           <span className='rounded border border-rose-900/50 bg-rose-950/60 px-2 py-0.5 text-xs font-semibold text-brand-down'>
@@ -45,7 +120,10 @@ export function MarketTable({
         )}
       </div>
 
-      <div className='max-h-[580px] overflow-x-auto overflow-y-auto'>
+      <div
+        onScroll={isVirtual ? handleScroll : undefined}
+        className='max-h-[580px] overflow-x-auto overflow-y-auto'
+      >
         <table className='w-full border-collapse text-left text-xs'>
           <thead>
             <tr className='sticky top-0 z-10 border-b border-brand-border bg-brand-card text-[11px] font-semibold text-brand-muted'>
@@ -75,15 +153,41 @@ export function MarketTable({
             </tr>
           </thead>
           <tbody className='divide-y divide-brand-border-subtle'>
-            {symbols.map((sym) => (
+            {bounds.paddingTop > 0 && (
+              <tr aria-hidden='true'>
+                <td
+                  colSpan={8}
+                  aria-label='scroll-spacer'
+                  style={{
+                    height: `${bounds.paddingTop}px`,
+                    padding: 0,
+                    border: 'none',
+                  }}
+                />
+              </tr>
+            )}
+            {visibleSymbols.map((sym) => (
               <MarketTableRow
                 key={sym.symbol}
                 client={client}
                 symbol={sym}
                 isSelected={sym.index === selectedSymbolIndex}
-                onSelect={() => onSelectSymbol(sym.index)}
+                onSelect={handleSelect}
               />
             ))}
+            {bounds.paddingBottom > 0 && (
+              <tr aria-hidden='true'>
+                <td
+                  colSpan={8}
+                  aria-label='scroll-spacer'
+                  style={{
+                    height: `${bounds.paddingBottom}px`,
+                    padding: 0,
+                    border: 'none',
+                  }}
+                />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -95,7 +199,7 @@ interface RowProps {
   client: FeedClient;
   symbol: SymbolInfo;
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (index: number) => void;
 }
 
 const MarketTableRow = memo(function MarketTableRow({
@@ -134,11 +238,11 @@ const MarketTableRow = memo(function MarketTableRow({
     <tr
       tabIndex={0}
       aria-selected={isSelected}
-      onClick={onSelect}
+      onClick={() => onSelect(symbol.index)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onSelect();
+          onSelect(symbol.index);
         }
       }}
       className={`cursor-pointer border-b border-brand-border-subtle transition hover:bg-brand-card-hover focus:outline-none focus:ring-1 focus:ring-brand-accent ${
@@ -156,10 +260,7 @@ const MarketTableRow = memo(function MarketTableRow({
         $
         {priceUsd < 0.01 && priceUsd > 0
           ? priceUsd.toPrecision(4)
-          : priceUsd.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 4,
-            })}
+          : fmtPrice.format(priceUsd)}
       </td>
 
       <td
@@ -172,27 +273,19 @@ const MarketTableRow = memo(function MarketTableRow({
       </td>
 
       <td className='px-4 py-2.5 text-right tabular-nums text-brand-muted'>
-        $
-        {highUsd.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}
+        ${fmtUsd.format(highUsd)}
       </td>
 
       <td className='px-4 py-2.5 text-right tabular-nums text-brand-muted'>
-        $
-        {lowUsd.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}
+        ${fmtUsd.format(lowUsd)}
       </td>
 
       <td className='px-4 py-2.5 text-right tabular-nums text-brand-muted'>
-        ${volumeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        ${fmtVolume.format(volumeUsd)}
       </td>
 
       <td className='px-4 py-2.5 text-right tabular-nums text-brand-muted'>
-        {quote.trades.toLocaleString()}
+        {fmtInt.format(quote.trades)}
       </td>
 
       <td className='px-4 py-1.5 text-center'>

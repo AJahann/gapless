@@ -1,6 +1,6 @@
 import type { Delta, Snapshot } from '@gapless/protocol';
 import { describe, expect, it } from 'vitest';
-import { MainThreadFeedClient } from './feed-client';
+import { LatencyTracker, MainThreadFeedClient } from './feed-client';
 
 describe(MainThreadFeedClient, () => {
   it('initializes in idle or connecting state', () => {
@@ -215,5 +215,33 @@ describe(MainThreadFeedClient, () => {
     expect(client.getSparkline(0).length).toBeGreaterThanOrEqual(1);
 
     client.stop();
+  });
+});
+
+describe(LatencyTracker, () => {
+  it('correctly calculates p95 percentile and bounds capacity', () => {
+    const tracker = new LatencyTracker(100);
+    expect(tracker.getP95()).toBeNull();
+
+    // Record values 1 to 100
+    for (let i = 1; i <= 100; i += 1) {
+      tracker.record(i);
+    }
+    expect(tracker.count).toBe(100);
+    // At 100 elements sorted 1..100, 95th index is 95
+    expect(tracker.getP95()).toBe(96);
+
+    // Negative / non-finite values are ignored
+    tracker.record(-5);
+    tracker.record(Number.NaN);
+    expect(tracker.count).toBe(100);
+
+    // Capacity bounds at 100
+    tracker.record(200);
+    expect(tracker.count).toBe(100);
+
+    tracker.reset();
+    expect(tracker.count).toBe(0);
+    expect(tracker.getP95()).toBeNull();
   });
 });

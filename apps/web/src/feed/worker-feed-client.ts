@@ -5,7 +5,12 @@ import {
 } from '@gapless/engine';
 import type { ChaosMessage, Delta, Quote, SymbolInfo } from '@gapless/protocol';
 import type { WorkerPatchMessage } from './engine.worker';
-import type { FeedClient, FeedClientOptions } from './feed-client';
+import {
+  type FeedClient,
+  type FeedClientOptions,
+  type FeedPerformanceMetrics,
+  LatencyTracker,
+} from './feed-client';
 
 export class WorkerFeedClient implements FeedClient {
   readonly feedId: string;
@@ -42,6 +47,10 @@ export class WorkerFeedClient implements FeedClient {
 
   private static readonly EMPTY_TRADES: Delta[] = [];
   private static readonly EMPTY_SPARKLINE: number[] = [];
+
+  // Performance instrumentation
+  private readonly latencyTracker = new LatencyTracker();
+  private renderedFrames = 0;
 
   // Listeners
   private readonly stateListeners = new Set<(state: SyncState) => void>();
@@ -93,6 +102,16 @@ export class WorkerFeedClient implements FeedClient {
   }
 
   private handleWorkerPatch(patch: WorkerPatchMessage): void {
+    this.renderedFrames += 1;
+    const recvAt = patch.receivedAt;
+    if (recvAt !== undefined && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        const paintProxy =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        this.latencyTracker.record(paintProxy - recvAt);
+      });
+    }
+
     if (patch.state !== this.state) {
       this.state = patch.state;
       for (const l of this.stateListeners) l(this.state);
@@ -212,6 +231,14 @@ export class WorkerFeedClient implements FeedClient {
   getDigest(): string {
     const validQuotes = this.quotes.filter((q): q is Quote => q !== undefined);
     return computeDigest(validQuotes);
+  }
+
+  getPerformanceMetrics(): FeedPerformanceMetrics {
+    return {
+      renderedFrames: this.renderedFrames,
+      p95RecvToPaintMs: this.latencyTracker.getP95(),
+      sampleCount: this.latencyTracker.count,
+    };
   }
 
   subscribeState(listener: (state: SyncState) => void): () => void {

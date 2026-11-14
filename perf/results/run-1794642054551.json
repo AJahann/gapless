@@ -1,0 +1,89 @@
+{
+  "commit": "e4d5a76",
+  "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+  "browserVersion": "158.0.8127.18",
+  "warmupMs": 2000,
+  "durationMs": 5000,
+  "results": [
+    {
+      "commit": "e4d5a76",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 100,
+      "universe": "top100",
+      "mode": "main",
+      "p95Latency": "244.9 ms",
+      "longTasks": "44 (max 202ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "4.6x",
+      "raw": {
+        "deltasInWindow": 332,
+        "framesInWindow": 72,
+        "p95RecvToPaintMs": 244.89999997615814,
+        "startHeapBytes": 33100000,
+        "endHeapBytes": 33100000,
+        "longTasksCount": 44,
+        "maxLongTaskMs": 202
+      }
+    },
+    {
+      "commit": "e4d5a76",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 100,
+      "universe": "top100",
+      "mode": "worker",
+      "p95Latency": "1127.7 ms",
+      "longTasks": "17 (max 226ms)",
+      "heapDelta": "0.0 MB (main)",
+      "coalescing": "2.0x",
+      "raw": {
+        "deltasInWindow": 288,
+        "framesInWindow": 144,
+        "p95RecvToPaintMs": 1127.7000000178814,
+        "startHeapBytes": 23100000,
+        "endHeapBytes": 23100000,
+        "longTasksCount": 17,
+        "maxLongTaskMs": 226
+      }
+    },
+    {
+      "commit": "e4d5a76",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 1000,
+      "universe": "top100",
+      "mode": "main",
+      "p95Latency": "276.5 ms",
+      "longTasks": "29 (max 321ms)",
+      "heapDelta": "0.0 MB",
+      "coalescing": "97.5x",
+      "raw": {
+        "deltasInWindow": 2340,
+        "framesInWindow": 24,
+        "p95RecvToPaintMs": 276.5,
+        "startHeapBytes": 35100000,
+        "endHeapBytes": 35100000,
+        "longTasksCount": 29,
+        "maxLongTaskMs": 321
+      }
+    },
+    {
+      "commit": "e4d5a76",
+      "hardware": "13th Gen Intel(R) Core(TM) i7-13620H (win32 x64)",
+      "rate": 1000,
+      "universe": "top100",
+      "mode": "worker",
+      "p95Latency": "8442.9 ms",
+      "longTasks": "71 (max 258ms)",
+      "heapDelta": "0.0 MB (main)",
+      "coalescing": "20.6x",
+      "raw": {
+        "deltasInWindow": 4200,
+        "framesInWindow": 204,
+        "p95RecvToPaintMs": 8442.899999976158,
+        "startHeapBytes": 50400000,
+        "endHeapBytes": 50400000,
+        "longTasksCount": 71,
+        "maxLongTaskMs": 258
+      }
+    }
+  ]
+}
