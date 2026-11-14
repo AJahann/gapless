@@ -339,11 +339,6 @@ export class SyncEngine {
     this.metrics.deltasIn += 1;
     const [seq] = delta;
 
-    if (this.droppedTailTimer) {
-      this.droppedTailTimer.cancel();
-      this.droppedTailTimer = null;
-    }
-
     // While syncing or before a baseline snapshot is installed:
     // Deltas must be buffered in pending, NEVER applied to uninitialized state
     if (this.state === 'syncing' || !this.baselineInstalled) {
@@ -360,6 +355,10 @@ export class SyncEngine {
     }
 
     if (seq === this.lastSeq + 1) {
+      if (this.droppedTailTimer) {
+        this.droppedTailTimer.cancel();
+        this.droppedTailTimer = null;
+      }
       if (this.applySingleDelta(delta)) {
         this.drainPending();
       }
@@ -370,22 +369,31 @@ export class SyncEngine {
     this.metrics.gaps += 1;
 
     // Hard memory bound: cap pending map size at MAX_PENDING_SIZE
-    if (this.pending.size >= MAX_PENDING_SIZE) {
-      if (!this.gapTimer && this.state !== 'replaying') {
-        this.requestResume(true);
-      }
+    if (this.pending.size < MAX_PENDING_SIZE) {
+      this.pending.set(seq, delta);
+    }
+    if (this.droppedTailTimer) {
+      this.droppedTailTimer.cancel();
+      this.droppedTailTimer = null;
+    }
+    this.scheduleGapRetry();
+  }
+
+  private scheduleGapRetry(): void {
+    if (
+      this.gapTimer ||
+      this.pending.size === 0 ||
+      this.state === 'idle' ||
+      this.state === 'offline' ||
+      this.state === 'syncing' ||
+      !this.socket?.isOpen()
+    )
       return;
-    }
-
-    this.pending.set(seq, delta);
-
-    // If gapTimer not running, start 100ms timer
-    if (!this.gapTimer) {
-      this.gapTimer = this.clock.setTimeout(() => {
-        this.gapTimer = null;
-        this.requestResume(true);
-      }, GAP_TIMEOUT_MS);
-    }
+    this.gapTimer = this.clock.setTimeout(() => {
+      this.gapTimer = null;
+      this.requestResume(true);
+      this.scheduleGapRetry();
+    }, GAP_TIMEOUT_MS);
   }
 
   private applySingleDelta(delta: Delta): boolean {
@@ -434,7 +442,7 @@ export class SyncEngine {
   private handleHeartbeat(headSeq: number): void {
     this.resetWatchdog();
 
-    if (headSeq > this.lastSeq && this.state !== 'syncing') {
+    if (headSeq > this.lastSeq && this.state !== 'syncing' && !this.gapTimer) {
       // Server is ahead: if no delta closes gap within 250ms, request resume
       if (!this.droppedTailTimer) {
         this.droppedTailTimer = this.clock.setTimeout(() => {

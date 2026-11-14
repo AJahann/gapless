@@ -35,7 +35,10 @@ else                              → pending.set(seq, delta)
 ```
 
 `drainPending`: while `pending.has(lastSeq + 1)` apply and delete. Pending is a
-`Map<seq, Delta>`, bounded; overflow means resume, never silent dropping.
+`Map<seq, Delta>`, capped at 256 entries. When full, later deltas are not
+staged; while a gap remains, the client retries resume at 100 ms intervals.
+Only contiguous deltas advance state, and a successful replay fills the gap.
+Cut, stop, socket close, and snapshot sync cancel the retry timer.
 
 `applyDelta` is the shared reducer also used by the server generator. It updates
 quote (price/open/high/low/volume/trades/lastSeq/lastTs) and appends to the
@@ -52,8 +55,8 @@ gate — there is no separate replay code path.
 - `replay_unavailable` → enter `syncing` (snapshot path).
 - Socket closes → backoff reconnect with `hello.resume = {epoch, lastSeq}`.
 
-Exactly one outstanding resume at a time; repeated gap detections while
-`replaying` must not spam the server.
+A gap retry is sent at most once per 100 ms while pending remains non-empty;
+there is no wire acknowledgement to identify a single outstanding resume.
 
 ## Snapshot path (`syncing`)
 
