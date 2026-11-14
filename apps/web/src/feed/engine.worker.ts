@@ -3,7 +3,7 @@ import {
   SyncEngine,
   type SyncMetrics,
   type SyncState,
-  TopK,
+  computeTopMovers,
 } from '@gapless/engine';
 import {
   type ChaosMessage,
@@ -71,24 +71,7 @@ function recomputeTopMovers(): void {
   const quotes = engine.currentQuotes;
   if (quotes.length === 0 || symbols.length === 0) return;
 
-  interface MoverItem {
-    symbol: SymbolInfo;
-    quote: Quote;
-    changePct: number;
-  }
-
-  const topHeap = new TopK<MoverItem>(5, (a, b) => a.changePct - b.changePct);
-
-  for (let i = 0; i < quotes.length; i += 1) {
-    const q = quotes[i]!;
-    const sym = symbols[i];
-    if (!sym || q.open === 0) continue;
-
-    const changePct = ((q.price - q.open) / q.open) * 100;
-    topHeap.push({ symbol: sym, quote: q, changePct });
-  }
-
-  topGainersCache = topHeap.getSorted();
+  topGainersCache = computeTopMovers(quotes, symbols, 5);
 }
 
 function scheduleFlush(): void {

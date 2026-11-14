@@ -70,5 +70,6 @@ Pass `TARGET_URL=http://127.0.0.1:80` (or `:3000`) to execute against running co
 9. **Scenario 9**: Chaos Reorder injection (`reorder: 25%`) detects out-of-order packets and buffers them cleanly.
 10. **Scenario 10**: Chaos Jitter (`jitterMs: 150ms`) applies transport latency while maintaining continuous live delivery.
 11. **Scenario 11**: Chaos Silent socket (`silent: true`) triggers heartbeat watchdog timeout and automatic reconnection.
+12. **Scenario 12**: Feed pause via test control asserts exact canonical 64-bit FNV-1a digest equality between server and client in both main thread and Web Worker execution modes.
 
 CI runs short replay window and fixed seeds so recovery paths are deterministic.

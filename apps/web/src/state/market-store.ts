@@ -1,7 +1,7 @@
 import type { SyncMetrics, SyncState } from '@gapless/engine';
 import type { Delta, Quote, SymbolInfo } from '@gapless/protocol';
 import { useSyncExternalStore } from 'react';
-import { type FeedClient, MainThreadFeedClient } from '../feed/feed-client';
+import type { FeedClient } from '../feed/feed-client';
 
 const EMPTY_ARRAY: never[] = [];
 
@@ -19,15 +19,6 @@ const INITIAL_METRICS: SyncMetrics = {
   state: 'connecting',
   lastEventAt: 0,
 };
-
-let globalClient: FeedClient | null = null;
-
-export function getOrCreateFeedClient(feedId = 'top100@100'): FeedClient {
-  if (!globalClient) {
-    globalClient = new MainThreadFeedClient({ feedId });
-  }
-  return globalClient;
-}
 
 export function useSyncState(client: FeedClient): SyncState {
   return useSyncExternalStore(

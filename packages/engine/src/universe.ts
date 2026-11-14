@@ -1,5 +1,6 @@
 import type { Delta, Quote, SymbolInfo } from '@gapless/protocol';
 import { createPrng } from './prng';
+import { TopK } from './top-k';
 
 /**
  * Top 100 cryptocurrency token fixture with fixed-point prices (scale 1e6).
@@ -236,4 +237,31 @@ export function computeDigest(quotes: Iterable<Quote>): string {
     }
   }
   return hash.toString(16).padStart(16, '0');
+}
+
+export interface TopGainer {
+  symbol: SymbolInfo;
+  quote: Quote;
+  changePct: number;
+}
+
+/**
+ * Extracts and sorts top movers by percentage gain relative to open price.
+ * Shared across main thread and Web Worker feed clients.
+ */
+export function computeTopMovers(
+  quotes: readonly (Quote | undefined)[],
+  symbols: readonly SymbolInfo[],
+  limit = 5,
+): TopGainer[] {
+  const heap = new TopK<TopGainer>(limit, (a, b) => a.changePct - b.changePct);
+  const len = Math.min(quotes.length, symbols.length);
+  for (let idx = 0; idx < len; idx += 1) {
+    const q = quotes[idx];
+    const s = symbols[idx];
+    if (!q || !s || q.open <= 0) continue;
+    const changePct = ((q.price - q.open) / q.open) * 100;
+    heap.push({ symbol: s, quote: q, changePct });
+  }
+  return heap.getSorted();
 }
